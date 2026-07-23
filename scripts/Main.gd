@@ -43,6 +43,7 @@ var feedback_panel: PanelContainer
 var fb_title: Label
 var fb_text: Label
 var header_sub: Label
+var speed_lbl: Label
 var save_dialog: FileDialog
 
 func _ready() -> void:
@@ -95,6 +96,13 @@ func _build_header() -> void:
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	h.add_child(spacer)
+	speed_lbl = Label.new()
+	speed_lbl.add_theme_font_size_override("font_size", 16)
+	speed_lbl.add_theme_color_override("font_color", GREEN)
+	h.add_child(speed_lbl)
+	var spacer2 := Control.new()
+	spacer2.custom_minimum_size.x = 14
+	h.add_child(spacer2)
 	var status := LinkButton.new()
 	status.text = "veri durumu"
 	status.pressed.connect(_on_data_status)
@@ -109,6 +117,7 @@ func _build_field() -> void:
 	field.set_anchors_preset(Control.PRESET_FULL_RECT)
 	field.offset_top = 52
 	field.flight_finished.connect(_on_flight_finished)
+	field.speed_report.connect(_on_speed_report)
 	add_child(field)
 	move_child(field, 0)
 	var bg := ColorRect.new()
@@ -403,6 +412,8 @@ func _show_entry() -> void:
 	feedback_panel.visible = false
 	field.visible = false
 	header_sub.text = ""
+	if speed_lbl:
+		speed_lbl.text = ""
 	code_edit.text = ""
 	group_lbl.text = "Grup: —"
 	err_lbl.text = ""
@@ -458,10 +469,18 @@ func _set_friction(idx: int) -> void:
 		friction_btns[i].button_pressed = (i == idx)
 	_update_preview()
 
+func _on_speed_report(sp: float, steady: bool) -> void:
+	if steady:
+		speed_lbl.text = "Hız: %d m/s (sabit)" % int(round(sp))
+	else:
+		speed_lbl.text = "Hız: %d m/s" % int(round(sp))
+
 func _update_preview() -> void:
 	# yalnızca karar aşamasında (kick paneli görünürken) önizleme çiz
 	if kick_panel == null or not kick_panel.visible:
 		return
+	if speed_lbl:
+		speed_lbl.text = ""   # karar aşamasında hız gösterme
 	field.set_preview(cb_gravity.button_pressed, cb_kick.button_pressed,
 		cb_air.button_pressed, v0, angle, Physics.drag_for_level(friction_level), kick_force)
 

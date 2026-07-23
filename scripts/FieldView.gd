@@ -4,6 +4,7 @@ extends Control
 ## with the real (drag) path shown dashed for comparison.
 
 signal flight_finished
+signal speed_report(speed: float, steady: bool)   # üst panelde canlı hız için
 
 const FIELD_METERS := 60.0
 const GOAL_X := 49.0         # kale ön çizgisi (m). Doğru cevap ~52m'ye düşer, topu ağa sokar.
@@ -24,6 +25,35 @@ const ARROW_MAX := 95.0    # görsel sınır (px)
 const C_GRAVITY := Color("2563eb")   # mavi
 const C_AIR := Color("0891b2")       # camgöbeği
 const C_KICK := Color("dc2626")      # kırmızı
+
+# 8-bit Messi (11x25). H=saç B=sakal K=ten E=göz L=açıkmavi W=beyaz D=şort S=çorap O=krampon
+const MESSI := [
+	"...HHHHH...",
+	"..HHHHHHH..",
+	".HHKKKKKHH.",
+	".HKKKKKKKH.",
+	".HKKKKKKKH.",
+	"..KEKKKEK..",
+	"..KKKKKKK..",
+	"..BKKKKKB..",
+	"..BBBBBBB..",
+	"..WLWLWLW..",
+	".LWLWLWLWL.",
+	".LWLWLWLWL.",
+	".LWLWLWLWL.",
+	".LWLWLWLWL.",
+	".LWLWLWLWL.",
+	".LWLWLWLWL.",
+	"..DDDDDDD..",
+	"..DDDDDDD..",
+	"..DD...DD..",
+	"..KK...KK..",
+	"..KK...KK..",
+	"..SS...SS..",
+	"..SS...SS..",
+	"..SS...SS..",
+	"..OO...OO..",
+]
 var f_gravity := false
 var f_kick := false
 var f_air := false
@@ -42,6 +72,7 @@ var target_focus := Vector2.ZERO
 var stars: PackedVector2Array = []
 var scored := false       # top file içinde mi (gol kutlaması)
 var score_t := 0.0        # kutlama başından beri geçen süre
+var flight_lands := false # top görüş alanında yere iniyor mu (yoksa uzaya uçup ekrandan çıkar)
 
 func _ready() -> void:
 	set_process(true)
@@ -84,6 +115,9 @@ func start_flight(pred: Array, real_pts: Array) -> void:
 	playing = true
 	show_real = false
 	pv_active = false
+	# top görüş alanında yere iniyor mu? Değilse (uzaya uçuş) kamera kovalamaz, ekrandan çıkar.
+	var lp: Vector2 = predicted[-1]["p"] if not predicted.is_empty() else Vector2.ZERO
+	flight_lands = lp.y < 1.0 and lp.x < 110.0
 	_reset_camera()
 	queue_redraw()
 
@@ -130,6 +164,10 @@ func _process(delta: float) -> void:
 		var last_t: float = predicted[-1]["t"] if not predicted.is_empty() else 0.0
 		trail.append(_point_at(predicted, play_t))   # DÜNYA koordinatı (zoom'da bozulmasın)
 		_update_flight_camera()
+		# canlı hız (üst panele) + hız sabit mi (Newton 1: kuvvetsiz sonsuza dek aynı hız)
+		var sp := _vel_at(predicted, play_t).length()
+		var sp_prev := _vel_at(predicted, maxf(play_t - 0.4, 0.0)).length()
+		speed_report.emit(sp, play_t > 0.5 and absf(sp - sp_prev) < 0.3)
 		animating = true
 		if play_t >= last_t:
 			playing = false
@@ -149,8 +187,17 @@ func _process(delta: float) -> void:
 	if animating:
 		queue_redraw()
 
-## Uçuş sırasında: orijin ile topu çerçevede tutacak kadar geri çekil (yalnızca zoom-out).
+## Uçuş sırasında kamera. İniş varsa topu çerçevede tut; uzaya uçuşta kovalama —
+## hafif geri çekil ve topun ekrandan ÇIKMASINA izin ver (havada asılı görünmesin).
 func _update_flight_camera() -> void:
+	if not flight_lands:
+		# uzaya uçuş: kamera topu HEM yatay HEM dikey takip eder (köşede/çok uzakta kalmasın),
+		# odak topun biraz gerisinde tutulur ki top üst-merkeze doğru yükselirken izi de görünsün;
+		# çim/zemin aşağı kayıp ekrandan çıkar.
+		var b: Vector2 = _point_at(predicted, play_t)
+		target_zoom = 0.82
+		target_focus = b * 0.72
+		return
 	var ball: Vector2 = _point_at(predicted, play_t)
 	var maxx: float = maxf(ball.x * 1.12, FIELD_METERS)   # en az varsayılan alanı göster
 	var maxy: float = maxf(ball.y * 1.15, 12.0)
@@ -177,25 +224,31 @@ func _on_flight_end() -> void:
 	# top havada uçup gittiyse (uzay) kamera geniş açıda kalır
 
 func _draw() -> void:
-	var ground_y := size.y * 0.82
-	var grass_top := ground_y - size.y * 0.18
+	# kameranın dikey kayması: uzaya yükselişte çim/zemin aşağı iner (delta>0)
+	var delta := cam_focus.y * _base_scale() * cam_zoom
+	var ground_y := size.y * 0.82 + delta
+	var grass_top := (size.y * 0.82 - size.y * 0.18) + delta
 	# --- gökyüzü / uzay: top yükseldikçe gök kararır, yıldızlar belirir ---
 	var ball_h := (trail[trail.size() - 1].y if not trail.is_empty() else 0.0)
 	var space := clampf((ball_h - 45.0) / 90.0, 0.0, 1.0)   # 45m'de başlar, ~135m'de tam uzay
 	var sky := Color("dbeafe").lerp(Color("060a1c"), space)
 	var sky2 := Color("e8f2fb").lerp(Color("0d1430"), space)
-	draw_rect(Rect2(Vector2.ZERO, Vector2(size.x, grass_top)), sky)
-	draw_rect(Rect2(Vector2(0, grass_top * 0.55), Vector2(size.x, grass_top * 0.45)), sky2)
+	var sky_bottom := clampf(grass_top, 0.0, size.y)
+	draw_rect(Rect2(Vector2.ZERO, Vector2(size.x, sky_bottom)), sky)
+	if sky_bottom > 4.0:
+		draw_rect(Rect2(Vector2(0, sky_bottom * 0.55), Vector2(size.x, sky_bottom * 0.45)), sky2)
 	if space > 0.02:
 		for sf in stars:
-			var sp := Vector2(sf.x * size.x, sf.y * grass_top)
+			var sp := Vector2(sf.x * size.x, sf.y * maxf(sky_bottom, size.y * 0.5))
 			draw_circle(sp, 1.4, Color(1, 1, 1, space * (0.35 + 0.55 * sf.y)))
-	# --- çim + zemin (uzayda bile zemin çizgisi ufuk olarak kalır) ---
-	draw_rect(Rect2(Vector2(0, grass_top), Vector2(size.x, size.y - grass_top)), Color("a7d7a0"))
-	draw_line(Vector2(0, ground_y), Vector2(size.x, ground_y), Color("5b6b57"), 2.0)
+	# --- çim + zemin (yukarı yükselişte aşağı kayıp ekrandan çıkar) ---
+	if grass_top < size.y:
+		draw_rect(Rect2(Vector2(0, grass_top), Vector2(size.x, size.y - grass_top)), Color("a7d7a0"))
+	if ground_y >= 0.0 and ground_y < size.y:
+		draw_line(Vector2(0, ground_y), Vector2(size.x, ground_y), Color("5b6b57"), 2.0)
 	# --- oyuncu ---
 	var o := _world_to_px(Vector2.ZERO)
-	_draw_player(o + Vector2(-26, 0))
+	_draw_player(o + Vector2(-38, 0))
 	# --- kale: rijit çerçeve + örgü ağ; gol olunca top girdiği yerden ağı geri iter ---
 	var goal_h_m := (size.y * 0.28) / _base_scale()
 	var g0 := _world_to_px(Vector2(GOAL_X, 0.0))          # ön-alt köşe
@@ -273,13 +326,15 @@ func _draw() -> void:
 	# --- GOL kutlaması (en üstte) ---
 	if scored:
 		var bp := _world_to_px(trail[trail.size() - 1]) if not trail.is_empty() else _world_to_px(Vector2(GOAL_X, 0.0))
-		# çarpma halkası (kehribar dış + beyaz iç — açık zeminde de görünür)
-		if score_t < 0.6:
-			var k := score_t / 0.6
-			var ca := (1.0 - k) * 0.9
-			var rr := 14.0 + k * 120.0 * cam_zoom
-			draw_arc(bp, rr, 0, TAU, 40, Color("f59e0b", ca), 4.0)
-			draw_arc(bp, rr * 0.6, 0, TAU, 40, Color(1, 1, 1, ca * 0.7), 2.0)
+		# art arda birkaç çarpma halkası (kehribar dış + beyaz iç — belirgin kutlama)
+		for ri in range(4):
+			var lt := score_t - ri * 0.16   # her halka 0.16s arayla başlar
+			if lt >= 0.0 and lt < 0.6:
+				var k := lt / 0.6
+				var ca := (1.0 - k) * 0.9
+				var rr := 12.0 + k * 130.0 * cam_zoom
+				draw_arc(bp, rr, 0, TAU, 40, Color("f59e0b", ca), 4.0)
+				draw_arc(bp, rr * 0.62, 0, TAU, 40, Color(1, 1, 1, ca * 0.7), 2.0)
 		# GOL! yazısı — belirip hafifçe zıplar
 		var font := get_theme_default_font()
 		var a := clampf(score_t * 3.0, 0.0, 1.0)
@@ -298,13 +353,13 @@ func _draw_ball(bp: Vector2) -> void:
 ## Seçili kuvvetleri, o andaki hıza göre hesaplayıp ok olarak çizer.
 ## Yalnızca işaretli kuvvetin oku görünür; ok boyu kuvvet büyüklüğüyle orantılı.
 func _draw_force_arrows(ball_px: Vector2, vel: Vector2) -> void:
-	var arrows: Array = []   # [{a:Vector2 (world accel, y-up), c:Color, l:String}]
+	var arrows: Array = []   # [{a:Vector2 (world accel, y-up), c:Color, l:String, w:float}]
 	if f_gravity:
-		arrows.append({"a": Vector2(0, -Physics.G), "c": C_GRAVITY, "l": "Yerçekimi"})
+		arrows.append({"a": Vector2(0, -Physics.G), "c": C_GRAVITY, "l": "Yerçekimi", "w": 4.0})
 	if f_air:
-		arrows.append({"a": -f_drag * vel.length() * vel, "c": C_AIR, "l": "Hava direnci"})
+		arrows.append({"a": -f_drag * vel.length() * vel, "c": C_AIR, "l": "Hava direnci", "w": 6.0})
 	if f_kick and vel.length() > 0.01:
-		arrows.append({"a": vel.normalized() * f_impetus, "c": C_KICK, "l": "Vuruş F"})
+		arrows.append({"a": vel.normalized() * f_impetus, "c": C_KICK, "l": "Vuruş F", "w": 4.0})
 	for arr in arrows:
 		var acc: Vector2 = arr["a"]
 		if acc.length() < 0.05:
@@ -312,19 +367,44 @@ func _draw_force_arrows(ball_px: Vector2, vel: Vector2) -> void:
 		var scr := Vector2(acc.x, -acc.y) * ARROW_SCALE   # dünya y-yukarı -> ekran y-aşağı
 		if scr.length() > ARROW_MAX:
 			scr = scr.normalized() * ARROW_MAX
-		_draw_arrow(ball_px, ball_px + scr, arr["c"], arr["l"])
+		_draw_arrow(ball_px, ball_px + scr, arr["c"], arr["l"], arr["w"])
 
-func _draw_arrow(from: Vector2, to: Vector2, col: Color, label: String) -> void:
-	draw_line(from, to, col, 3.0)
+func _draw_arrow(from: Vector2, to: Vector2, col: Color, label: String, w := 4.0) -> void:
 	var dir := (to - from).normalized()
 	var n := Vector2(-dir.y, dir.x)
-	var h := 10.0
-	draw_colored_polygon(PackedVector2Array([to, to - dir * h + n * h * 0.55, to - dir * h - n * h * 0.55]), col)
-	draw_string(get_theme_default_font(), to + dir * 8 + Vector2(2, -2), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, col)
+	var h := 6.0 + w * 1.6
+	# koyu dış hat: yeşil yörünge çizgisinden ayrışsın
+	draw_line(from, to, Color(0, 0, 0, 0.4), w + 2.5)
+	draw_colored_polygon(PackedVector2Array([to + dir * 2.0, to - dir * h + n * (h * 0.6 + 1.5), to - dir * h - n * (h * 0.6 + 1.5)]), Color(0, 0, 0, 0.4))
+	# renkli ok
+	draw_line(from, to, col, w)
+	draw_colored_polygon(PackedVector2Array([to, to - dir * h + n * h * 0.6, to - dir * h - n * h * 0.6]), col)
+	draw_string(get_theme_default_font(), to + dir * 10 + Vector2(2, -2), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, col)
 
+func _messi_color(ch: String) -> Color:
+	match ch:
+		"H": return Color("3a2415")   # saç
+		"B": return Color("5a3a22")   # sakal
+		"K": return Color("e8b88a")   # ten
+		"E": return Color("20242a")   # göz
+		"L": return Color("74add8")   # açık mavi (forma çizgisi)
+		"W": return Color("f4f7fb")   # beyaz (forma)
+		"D": return Color("2b2f36")   # şort
+		"S": return Color("8fc0ea")   # çorap
+		"O": return Color("d9a441")   # krampon
+		_: return Color("e8b88a")
+
+## 8-bit Messi'yi 'feet' (alt-orta) noktasına çizer; boy dinamik: başı yeşil
+## sahanın üst kenarına (grass_top = zemin - 0.18*yükseklik) denk gelir.
 func _draw_player(feet: Vector2) -> void:
-	var c := Color("e8862e")
-	draw_circle(feet + Vector2(0, -46), 7, Color("f0b27a"))          # head
-	draw_rect(Rect2(feet + Vector2(-7, -39), Vector2(14, 22)), c)     # torso
-	draw_line(feet + Vector2(-4, -17), feet + Vector2(-6, 0), Color("4a5568"), 4.0)
-	draw_line(feet + Vector2(4, -17), feet + Vector2(8, 0), Color("4a5568"), 4.0)
+	var w := 11
+	var h := MESSI.size()
+	var ps := (size.y * 0.18) / h       # piksel boyu (Messi yüksekliği = zemin - grass_top)
+	var ox := feet.x - w * ps * 0.5
+	var oy := feet.y - h * ps
+	for r in range(h):
+		var row: String = MESSI[r]
+		for c in range(w):
+			if row[c] == ".":
+				continue
+			draw_rect(Rect2(ox + c * ps, oy + r * ps, ps + 0.6, ps + 0.6), _messi_color(row[c]))
