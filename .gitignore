@@ -1,0 +1,13 @@
+# Godot 4+ editor cache (yeniden üretilir)
+.godot/
+
+# macOS
+.DS_Store
+
+# Godot dışa aktarımları
+/build/
+/export/
+export_presets.cfg
+
+# arşivler
+*.zip
