@@ -191,12 +191,11 @@ func _process(delta: float) -> void:
 ## hafif geri çekil ve topun ekrandan ÇIKMASINA izin ver (havada asılı görünmesin).
 func _update_flight_camera() -> void:
 	if not flight_lands:
-		# uzaya uçuş: kamera topu HEM yatay HEM dikey takip eder (köşede/çok uzakta kalmasın),
-		# odak topun biraz gerisinde tutulur ki top üst-merkeze doğru yükselirken izi de görünsün;
-		# çim/zemin aşağı kayıp ekrandan çıkar.
+		# uzaya uçuş: YATAYDA takip et (sağ köşeye kaçmasın), DİKEYDE kısmi bırak ki top
+		# yükselip ekranın ÜSTÜNDEN çıksın; çim/zemin aşağı kayıp ekrandan çıkar.
 		var b: Vector2 = _point_at(predicted, play_t)
-		target_zoom = 0.82
-		target_focus = b * 0.72
+		target_zoom = 0.9
+		target_focus = Vector2(b.x, b.y * 0.35)
 		return
 	var ball: Vector2 = _point_at(predicted, play_t)
 	var maxx: float = maxf(ball.x * 1.12, FIELD_METERS)   # en az varsayılan alanı göster
