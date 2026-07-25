@@ -6,6 +6,7 @@ extends Control
 signal flight_finished
 signal speed_report(speed: float, steady: bool)   # üst panelde canlı hız için
 signal intro_done                                 # koşu-vuruş animasyonu bitti (soru gösterilebilir)
+signal goal_scored                                # top file içine girdi (tezahürat sesi için)
 
 const FIELD_METERS := 60.0
 const GOAL_X := 49.0         # kale ön çizgisi (m). Doğru cevap ~52m'ye düşer, topu ağa sokar.
@@ -80,6 +81,14 @@ const INTRO_DUR := 1.25
 var intro_active := false
 var intro_t := 0.0
 
+# --- Messi sprite kareleri (PixelLab, east/sağa bakan; yüklenmezse piksel yedeğe düşer) ---
+var sp_idle: Array = []   # [{tex:Texture2D, rect:Rect2 (kaynaktaki karakter kutusu)}]
+var sp_run: Array = []
+var sp_kick: Array = []
+var sp_ref_h := 0.0       # referans karakter yüksekliği (tutarlı ölçek için)
+var ball_tex: Texture2D = null   # assets/sprites/ball.png (şeffaf); yoksa kod-top
+var ball_rect := Rect2()         # topun şeffaf-olmayan kutusu
+
 # --- gol juice: konfeti + ekran sarsıntısı ---
 var confetti: Array = []   # [{p:Vector2, v:Vector2, c:Color, rot:float, life:float}]
 var shake_t := 0.0
@@ -87,10 +96,47 @@ var shake_off := Vector2.ZERO
 
 func _ready() -> void:
 	set_process(true)
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST   # piksel sprite net görünsün (bulanık değil)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 20260723
 	for i in range(60):
 		stars.append(Vector2(rng.randf(), rng.randf() * 0.72))  # ekranın üst kısmına dağıt
+	# Messi sprite kareleri
+	sp_idle = _load_frames("res://assets/sprites/player/idle", 4)
+	sp_run = _load_frames("res://assets/sprites/player/run", 6)
+	sp_kick = _load_frames("res://assets/sprites/player/kick", 7)
+	if not sp_idle.is_empty():
+		sp_ref_h = maxf(sp_idle[0]["rect"].size.y, 1.0)
+	# top sprite'ı (varsa)
+	if ResourceLoader.exists("res://assets/sprites/ball.png"):
+		ball_tex = load("res://assets/sprites/ball.png") as Texture2D
+		if ball_tex != null:
+			ball_rect = Rect2(0, 0, ball_tex.get_width(), ball_tex.get_height())
+			var bimg := ball_tex.get_image()
+			if bimg != null:
+				var br := bimg.get_used_rect()
+				if br.size.x > 0 and br.size.y > 0:
+					ball_rect = Rect2(br.position, br.size)
+
+## Bir animasyon klasöründeki frame_000..N-1.png'leri yükler; her kare için
+## karakterin şeffaf-olmayan kutusunu (get_used_rect) da hesaplar (dolgu payını kırpmak için).
+func _load_frames(dir: String, n: int) -> Array:
+	var out: Array = []
+	for i in range(n):
+		var path := "%s/frame_%03d.png" % [dir, i]
+		if not ResourceLoader.exists(path):
+			continue
+		var tex := load(path) as Texture2D
+		if tex == null:
+			continue
+		var rect := Rect2(0, 0, tex.get_width(), tex.get_height())
+		var img := tex.get_image()
+		if img != null:
+			var ur := img.get_used_rect()
+			if ur.size.x > 0 and ur.size.y > 0:
+				rect = Rect2(ur.position, ur.size)
+		out.append({"tex": tex, "rect": rect})
+	return out
 
 func _base_scale() -> float:
 	return maxf((size.x - ORIGIN_X - RIGHT_MARGIN) / FIELD_METERS, 1.0)
@@ -264,6 +310,7 @@ func _on_flight_end() -> void:
 		target_zoom = 1.4
 		shake_t = 0.35
 		_spawn_confetti(Vector2(size.x * 0.5, size.y * 0.30))   # ekran orta-üstü (hep görünür, panel arkasında kalmaz)
+		goal_scored.emit()   # tezahürat sesi
 	elif landing.y <= 0.5 and landing.x > GOAL_X + 6.0:
 		# top kaleyi geçip uzağa indi — düştüğü yere yakınlaş
 		target_focus = Vector2(landing.x, 0.0)
@@ -425,6 +472,14 @@ func _draw() -> void:
 		draw_colored_polygon(PackedVector2Array([pc - u - w2, pc + u - w2, pc + u + w2, pc - u + w2]), col)
 
 func _draw_ball(bp: Vector2) -> void:
+	if ball_tex != null:
+		var d := 72.0                                    # ekran çapı (px), zoom'dan bağımsız (~3x)
+		var ang := (play_t * 8.0) if playing else 0.0    # uçarken döner
+		draw_set_transform(bp, ang, Vector2.ONE)
+		draw_texture_rect_region(ball_tex, Rect2(-d * 0.5, -d * 0.5, d, d), ball_rect)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		return
+	# yedek: kod-top
 	draw_circle(bp, 10.0, Color.WHITE)
 	draw_arc(bp, 10.0, 0, TAU, 24, Color("1f2937"), 2.0)
 	draw_circle(bp, 3.5, Color("1f2937"))
@@ -473,12 +528,39 @@ func _messi_color(ch: String) -> Color:
 		"O": return Color("d9a441")   # krampon
 		_: return Color("e8b88a")
 
-## 8-bit Messi'yi 'feet' (alt-orta) noktasına çizer; boy dinamik: başı yeşil
-## sahanın üst kenarına (grass_top = zemin - 0.18*yükseklik) denk gelir.
+## Futbolcuyu 'feet' (alt-orta) noktasına çizer. Sprite yüklüyse duruma göre
+## (giriş=koşu→vuruş, aksi=idle) doğru kareyi; değilse piksel Messi'yi çizer.
 func _draw_player(feet: Vector2) -> void:
+	var fr = _current_player_frame()
+	if fr == null:
+		_draw_player_fallback(feet)
+		return
+	var rect: Rect2 = fr["rect"]
+	var scale := (size.y * 0.18) / maxf(sp_ref_h, 1.0)   # idle boyu = zemin - grass_top
+	var w := rect.size.x * scale
+	var h := rect.size.y * scale
+	# ayaklar 'feet'te, yatayda ortalı; karenin dolgu payı get_used_rect ile kırpıldı
+	var dest := Rect2(feet.x - w * 0.5, feet.y - h, w, h)
+	draw_texture_rect_region(fr["tex"], dest, rect)
+
+## Duruma göre gösterilecek kare ({tex,rect}) — sprite yoksa null.
+func _current_player_frame():
+	if intro_active:
+		var p := intro_t / INTRO_DUR
+		if p < 0.72 and not sp_run.is_empty():
+			return sp_run[int(intro_t / 0.09) % sp_run.size()]         # koşu döngüsü
+		elif not sp_kick.is_empty():
+			var kp := clampf((p - 0.72) / 0.28, 0.0, 1.0)
+			return sp_kick[mini(int(kp * sp_kick.size()), sp_kick.size() - 1)]  # vuruş
+	if not sp_idle.is_empty():
+		return sp_idle[0]   # dururken
+	return null
+
+## Sprite yüklenmezse: eski 8-bit piksel Messi.
+func _draw_player_fallback(feet: Vector2) -> void:
 	var w := 11
 	var h := MESSI.size()
-	var ps := (size.y * 0.18) / h       # piksel boyu (Messi yüksekliği = zemin - grass_top)
+	var ps := (size.y * 0.18) / h
 	var ox := feet.x - w * ps * 0.5
 	var oy := feet.y - h * ps
 	for r in range(h):

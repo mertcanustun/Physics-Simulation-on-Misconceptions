@@ -44,6 +44,8 @@ var fb_title: Label
 var fb_text: Label
 var header_sub: Label
 var speed_lbl: Label
+var sfx_kick: AudioStreamPlayer
+var sfx_goal: AudioStreamPlayer
 var save_dialog: FileDialog
 
 func _ready() -> void:
@@ -119,7 +121,9 @@ func _build_field() -> void:
 	field.flight_finished.connect(_on_flight_finished)
 	field.speed_report.connect(_on_speed_report)
 	field.intro_done.connect(_on_intro_done)
+	field.goal_scored.connect(_on_goal_scored)
 	add_child(field)
+	_build_audio()
 	move_child(field, 0)
 	var bg := ColorRect.new()
 	bg.color = Color("eef4fa")
@@ -474,6 +478,21 @@ func _set_friction(idx: int) -> void:
 		friction_btns[i].button_pressed = (i == idx)
 	_update_preview()
 
+func _build_audio() -> void:
+	sfx_kick = AudioStreamPlayer.new()
+	if ResourceLoader.exists("res://assets/audio/kick.mp3"):
+		sfx_kick.stream = load("res://assets/audio/kick.mp3")
+	add_child(sfx_kick)
+	sfx_goal = AudioStreamPlayer.new()
+	if ResourceLoader.exists("res://assets/audio/applause.mp3"):
+		sfx_goal.stream = load("res://assets/audio/applause.mp3")
+	sfx_goal.volume_db = -3.0
+	add_child(sfx_goal)
+
+func _on_goal_scored() -> void:
+	if sfx_goal and sfx_goal.stream:
+		sfx_goal.play()
+
 func _on_speed_report(sp: float, steady: bool) -> void:
 	if steady:
 		speed_lbl.text = "Hız: %d m/s (sabit)" % int(round(sp))
@@ -541,6 +560,8 @@ func _on_run() -> void:
 	kick_panel.visible = false
 	feedback_panel.visible = false
 	field.set_forces(g, k, a, dk, kick_force)   # uçuş sırasında canlı kuvvet okları
+	if sfx_kick and sfx_kick.stream:
+		sfx_kick.play()                          # topa vuruş sesi
 	field.start_flight(pred, real)
 
 func _on_flight_finished() -> void:

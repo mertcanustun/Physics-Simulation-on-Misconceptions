@@ -36,9 +36,25 @@ sayısal entegrasyon (`scripts/Physics.gd`), görsel `scripts/FieldView.gd`, ak�
 - **Koşu-vuruş girişi:** katılımcı girince önce Messi soldan koşup topa gelir, ayak
   değince donar; **sonra** soru paneli çıkar (Predict→Observe akışı).
 
-Not: Şu an futbolcu/top/arka plan/file **tamamen kodla** (`draw_rect`/`draw_line`)
-çiziliyor — bu yüzden "2D zayıf" görünüyor. Aşağıdaki asset'lerle sprite'a çevirince
-görünüm ciddi profesyonelleşecek.
+## 1b. Görsel/işitsel asset entegrasyonu (2026-07-25)
+
+- **Futbolcu artık gerçek sprite** (kodla çizilen piksel Messi yedeğe alındı):
+  koşu-vuruş girişinde **run → kick** animasyonu, sonra **idle**; şeffaf kareler
+  `get_used_rect` ile otomatik kırpılıp ayakları zemine hizalanıyor.
+- **Top gerçek sprite** (uçarken dönüyor); şeffaf PNG.
+- **Sesler:** topa vuruşta **kick**, golde **tezahürat (applause)** — `AudioStreamPlayer`.
+- Sprite'lar `res://assets/sprites/`, sesler `res://assets/audio/` altında; kod
+  `draw_texture_rect_region` ile çiziyor, dosya yoksa piksel/kod yedeğe düşüyor.
+
+### Kullanılan araçlar (deliverable notu)
+- **PixelLab** (pixellab.ai) — 8-bit futbolcu karakteri + idle/koşu/vuruş animasyonları
+  (Character Creator, v3, Sidescroller, east yönü, 124×124, şeffaf PNG kareler).
+- **Pixabay** (pixabay.com/sound-effects) — ses efektleri: kick + crowd applause (bedava).
+- **remove.bg** — top görselinin arka planını şeffaflaştırmak için.
+
+> Not: futbolcu/top/file kodla da çizilebiliyor (yedek); asset'ler yalnızca görünümü
+> yükseltiyor, fizik/pedagoji mantığına dokunmuyor. Kalan tek görsel: stadyum arka planı
+> (opsiyonel — mevcut gradyan gök zaten çalışıyor).
 
 ---
 
