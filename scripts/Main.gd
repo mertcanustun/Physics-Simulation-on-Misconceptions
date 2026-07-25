@@ -118,6 +118,7 @@ func _build_field() -> void:
 	field.offset_top = 52
 	field.flight_finished.connect(_on_flight_finished)
 	field.speed_report.connect(_on_speed_report)
+	field.intro_done.connect(_on_intro_done)
 	add_child(field)
 	move_child(field, 0)
 	var bg := ColorRect.new()
@@ -456,9 +457,13 @@ func _on_continue() -> void:
 	mode_banner.add_theme_color_override("font_color", GREEN if official else Color("c2660a"))
 	entry_center.visible = false
 	field.visible = true
-	field.reset()
-	kick_panel.visible = true
+	kick_panel.visible = false
 	feedback_panel.visible = false
+	# önce koşu-vuruş girişi; ayak topa değince (_on_intro_done) soru gösterilir
+	field.start_intro()
+
+func _on_intro_done() -> void:
+	kick_panel.visible = true
 	_update_preview()
 
 # ------------------------------------------------------------ kuvvet önizleme

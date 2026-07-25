@@ -5,6 +5,7 @@ extends Control
 
 signal flight_finished
 signal speed_report(speed: float, steady: bool)   # üst panelde canlı hız için
+signal intro_done                                 # koşu-vuruş animasyonu bitti (soru gösterilebilir)
 
 const FIELD_METERS := 60.0
 const GOAL_X := 49.0         # kale ön çizgisi (m). Doğru cevap ~52m'ye düşer, topu ağa sokar.
@@ -74,6 +75,16 @@ var scored := false       # top file içinde mi (gol kutlaması)
 var score_t := 0.0        # kutlama başından beri geçen süre
 var flight_lands := false # top görüş alanında yere iniyor mu (yoksa uzaya uçup ekrandan çıkar)
 
+# --- koşu-vuruş girişi (soru gösterilmeden önce) ---
+const INTRO_DUR := 1.25
+var intro_active := false
+var intro_t := 0.0
+
+# --- gol juice: konfeti + ekran sarsıntısı ---
+var confetti: Array = []   # [{p:Vector2, v:Vector2, c:Color, rot:float, life:float}]
+var shake_t := 0.0
+var shake_off := Vector2.ZERO
+
 func _ready() -> void:
 	set_process(true)
 	var rng := RandomNumberGenerator.new()
@@ -87,7 +98,7 @@ func _base_scale() -> float:
 func _world_to_px(p: Vector2) -> Vector2:
 	var ground_y := size.y * 0.82
 	var s := _base_scale() * cam_zoom
-	var anchor := Vector2(ORIGIN_X, ground_y)   # dünya cam_focus'u burada görünür
+	var anchor := Vector2(ORIGIN_X, ground_y) + shake_off   # gol sarsıntısı
 	return anchor + Vector2((p.x - cam_focus.x) * s, -(p.y - cam_focus.y) * s)
 
 ## Hangi kuvvetlerin oku çizilecek (uçuş + önizleme ortak).
@@ -127,7 +138,18 @@ func reset() -> void:
 	playing = false
 	show_real = false
 	pv_active = false
+	intro_active = false
+	confetti.clear()
+	shake_t = 0.0
+	shake_off = Vector2.ZERO
 	_reset_camera()
+	queue_redraw()
+
+## Soru gösterilmeden önce: Messi koşup topa vurur, ayak değince donar.
+func start_intro() -> void:
+	reset()
+	intro_active = true
+	intro_t = 0.0
 	queue_redraw()
 
 func _reset_camera() -> void:
@@ -159,6 +181,12 @@ func _vel_at(pts: Array, t: float) -> Vector2:
 
 func _process(delta: float) -> void:
 	var animating := false
+	if intro_active:
+		intro_t += delta
+		animating = true
+		if intro_t >= INTRO_DUR:
+			intro_active = false
+			intro_done.emit()
 	if playing:
 		play_t += delta
 		var last_t: float = predicted[-1]["t"] if not predicted.is_empty() else 0.0
@@ -178,6 +206,24 @@ func _process(delta: float) -> void:
 		score_t += delta
 		if score_t < 3.0:
 			animating = true
+	# ekran sarsıntısı (sönümlenir)
+	if shake_t > 0.0:
+		shake_t = maxf(shake_t - delta, 0.0)
+		shake_off = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * shake_t * 40.0
+		animating = true
+	else:
+		shake_off = Vector2.ZERO
+	# konfeti (yerçekimiyle düşer, söner)
+	if not confetti.is_empty():
+		for piece in confetti:
+			var vv: Vector2 = piece["v"]
+			vv.y += 520.0 * delta                  # yerçekimi (px/s^2)
+			piece["v"] = vv
+			piece["p"] = piece["p"] + vv * delta
+			piece["rot"] = piece["rot"] + vv.x * 0.01 * delta
+			piece["life"] = piece["life"] - delta
+		confetti = confetti.filter(func(p): return p["life"] > 0.0)
+		animating = true
 	# kamerayı hedefe doğru yumuşat (uçuş bitse de iniş-zoom'u için sürsün)
 	if absf(cam_zoom - target_zoom) > 0.002 or cam_focus.distance_to(target_focus) > 0.05:
 		var k := clampf(delta * 3.5, 0.0, 1.0)
@@ -211,16 +257,33 @@ func _on_flight_end() -> void:
 	var landing: Vector2 = trail[-1]
 	var goal_depth_m := GOAL_DEPTH_PX / _base_scale()
 	if landing.y < 1.0 and landing.x >= GOAL_X - 1.0 and landing.x <= GOAL_X + goal_depth_m + 2.0:
-		# GOL — kaleye yakınlaş, kutlamayı başlat
+		# GOL — kaleye yakınlaş, kutlamayı başlat + juice
 		scored = true
 		score_t = 0.0
 		target_focus = Vector2(GOAL_X + goal_depth_m * 0.5, 0.0)
 		target_zoom = 1.4
+		shake_t = 0.35
+		_spawn_confetti(Vector2(size.x * 0.5, size.y * 0.30))   # ekran orta-üstü (hep görünür, panel arkasında kalmaz)
 	elif landing.y <= 0.5 and landing.x > GOAL_X + 6.0:
 		# top kaleyi geçip uzağa indi — düştüğü yere yakınlaş
 		target_focus = Vector2(landing.x, 0.0)
 		target_zoom = 1.25
 	# top havada uçup gittiyse (uzay) kamera geniş açıda kalır
+
+## Belirtilen ekran noktasından yukarı doğru renkli konfeti püskürtür.
+func _spawn_confetti(at: Vector2) -> void:
+	var cols := [Color("f59e0b"), Color("15803d"), Color("2563eb"), Color("dc2626"), Color("f4f7fb"), Color("74add8")]
+	var rng := RandomNumberGenerator.new()
+	for i in range(70):
+		var ang := rng.randf_range(-PI * 0.5 - 1.35, -PI * 0.5 + 1.35)  # geniş yukarı-dışa yelpaze
+		var spd := rng.randf_range(160.0, 560.0)
+		confetti.append({
+			"p": at + Vector2(rng.randf_range(-40, 40), rng.randf_range(-14, 14)),
+			"v": Vector2(cos(ang), sin(ang)) * spd,
+			"c": cols[rng.randi() % cols.size()],
+			"rot": rng.randf_range(0.0, TAU),
+			"life": rng.randf_range(1.1, 2.2),
+		})
 
 func _draw() -> void:
 	# kameranın dikey kayması: uzaya yükselişte çim/zemin aşağı iner (delta>0)
@@ -245,9 +308,16 @@ func _draw() -> void:
 		draw_rect(Rect2(Vector2(0, grass_top), Vector2(size.x, size.y - grass_top)), Color("a7d7a0"))
 	if ground_y >= 0.0 and ground_y < size.y:
 		draw_line(Vector2(0, ground_y), Vector2(size.x, ground_y), Color("5b6b57"), 2.0)
-	# --- oyuncu ---
+	# --- oyuncu (giriş: soldan koşup topa yaklaşır, ayak değince donar) ---
 	var o := _world_to_px(Vector2.ZERO)
-	_draw_player(o + Vector2(-38, 0))
+	var pofs := Vector2(-38.0, 0.0)   # dinlenme: topun hemen solunda
+	if intro_active:
+		var p := clampf(intro_t / INTRO_DUR, 0.0, 1.0)
+		var ep := 1.0 - pow(1.0 - p, 3.0)                        # ease-out (yavaşlayarak yaklaş)
+		var offx := lerpf(-38.0 - 260.0, -38.0, ep)              # soldan koşup gelir
+		var bob := absf(sin(intro_t * 16.0)) * 8.0 * (1.0 - p)   # koşu zıplaması, sonda söner
+		pofs = Vector2(offx, -bob)
+	_draw_player(o + pofs)
 	# --- kale: rijit çerçeve + örgü ağ; gol olunca top girdiği yerden ağı geri iter ---
 	var goal_h_m := (size.y * 0.28) / _base_scale()
 	var g0 := _world_to_px(Vector2(GOAL_X, 0.0))          # ön-alt köşe
@@ -259,7 +329,7 @@ func _draw() -> void:
 	# gol anında ağ şişmesi: hızlı geri itilir, sönümlü salınımla dinginleşir
 	var bulge := 0.0
 	if scored:
-		bulge = exp(-score_t * 2.0) * (20.0 + 7.0 * cos(score_t * 15.0)) * cam_zoom
+		bulge = exp(-score_t * 1.7) * (32.0 + 10.0 * cos(score_t * 16.0)) * cam_zoom
 	# şişme topun girdiği yükseklikte en fazla (file cebi orada oluşur)
 	var hit_y := (_world_to_px(trail[trail.size() - 1]).y if not trail.is_empty() else base_y - goal_h_px * 0.15)
 	var spread := maxf(goal_h_px * 0.30, 1.0)
@@ -316,11 +386,12 @@ func _draw() -> void:
 		if playing:
 			_draw_force_arrows(bp, _vel_at(predicted, play_t))   # uçuş sırasında canlı
 		_draw_ball(bp)
-	elif pv_active:
-		# vuruş öncesi: topu orijinde göster + seçili kuvvetleri fırlatma büyüklüğünde
+	elif pv_active or intro_active:
+		# vuruş öncesi/giriş: topu orijinde göster (oklar yalnızca önizlemede)
 		var b0 := _world_to_px(Vector2.ZERO) + Vector2(0, -10)
-		var launch := Vector2(cos(deg_to_rad(pv_angle)), sin(deg_to_rad(pv_angle))) * pv_v0
-		_draw_force_arrows(b0, launch)
+		if pv_active:
+			var launch := Vector2(cos(deg_to_rad(pv_angle)), sin(deg_to_rad(pv_angle))) * pv_v0
+			_draw_force_arrows(b0, launch)
 		_draw_ball(b0)
 	# --- GOL kutlaması (en üstte) ---
 	if scored:
@@ -343,6 +414,15 @@ func _draw() -> void:
 		var tp := Vector2(size.x * 0.5 - tw * 0.5, size.y * 0.30)
 		draw_string(font, tp + Vector2(2, 2), "GOL!", HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0, 0, 0, a * 0.25))
 		draw_string(font, tp, "GOL!", HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color("15803d", a))
+	# --- konfeti (en üstte) ---
+	for piece in confetti:
+		var col: Color = piece["c"]
+		col.a = clampf(piece["life"], 0.0, 1.0)
+		var r: float = piece["rot"]
+		var u := Vector2(cos(r), sin(r)) * 6.0
+		var w2 := Vector2(-u.y, u.x) * 0.55
+		var pc: Vector2 = piece["p"]
+		draw_colored_polygon(PackedVector2Array([pc - u - w2, pc + u - w2, pc + u + w2, pc - u + w2]), col)
 
 func _draw_ball(bp: Vector2) -> void:
 	draw_circle(bp, 10.0, Color.WHITE)
