@@ -365,3 +365,23 @@ içindeki `connect` satırı önceki bir düzenlemede kaybolmuştu; bu yüzden
   "vuruş kuvveti F" yanılgısında top 60+ m'ye çıktığı için öğrenci topun
   uzaya kaçtığını görür — "bu kuvvetle top asla inmez" mesajını güçlendirir.
 - Küçük koruma: uçuş sürerken `_on_intro_done` soru kutusunu artık yeniden açamaz.
+
+---
+# Güncelleme — etkileşim telemetrisi (Telemetry) entegrasyonu
+
+- `scripts/Telemetry.gd` autoload olarak eklendi (project.godot → [autoload]).
+  DataLog'un YERİNE geçmez, yanında çalışır:
+  · DataLog  → deneme başına 1 özet satır (CSV)
+  · Telemetry → olay akışı: hover + dwell, işaretleme sırası, sürtünme
+    değişiklikleri, karar süresi, mouse yörüngesi (~15 Hz), tıklamalar,
+    cevap gönderimi, tekrar/yeni cevap, uçuş sonucu (user://events_log.jsonl,
+    JSON Lines). sid + code + attempt ile CSV'yle birleştirilir.
+- GİZLİLİK: DataLog ile aynı ilke — yönetici veri toplamayı AÇMADIYSA hiçbir
+  olay yazılmaz (başsız testle doğrulandı).
+- Kısayol: **F8 = etkileşim (JSONL) verisini dışa aktar** (web'de doğrudan indirme).
+- Ayrıntı: docs/logger-entegrasyon.md
+- NOT (test altyapısı): `--script` kipinde autoload'lar kurulmadığı için
+  Main.gd autoload'a `@onready var Tele = get_node("/root/Telemetry")` ile
+  erişir; test betikleri aynı adla düğümü elle ekler. Oyun davranışı değişmez.
+- `_force_box` iyileştirmesi (Defne): kutu içi kontroller mouse'a kapatıldı,
+  hover artık kutunun tamamı için tek parça (dwell ölçümü titremiyor).

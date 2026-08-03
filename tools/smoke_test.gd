@@ -14,6 +14,10 @@ func _init() -> void:
 
 	# --- 1. Veri toplama KAPALIYKEN kayıt olmamalı (deneme modu) ---
 	Session.deactivate(CODE)
+	# --script modunda autoload'lar kurulmaz: Telemetry'yi elle ekle
+	var tele = load("res://scripts/Telemetry.gd").new()
+	tele.name = "Telemetry"
+	root.add_child(tele)
 	var main = load("res://scenes/Main.tscn").instantiate()
 	root.add_child(main)
 	await process_frame          # _ready() çalışsın (arayüz kodla kuruluyor)
@@ -106,6 +110,44 @@ func _init() -> void:
 		print("FAIL: durdurulduktan sonra kayıt eklendi"); fails += 1
 	else:
 		print("OK  : durdurulduktan sonra kayıt eklenmiyor")
+
+	# --- 5. TELEMETRİ: resmi modda olay yazılmalı, deneme modunda yazılmamalı ---
+	tele.clear_all()
+	Session.deactivate(CODE)
+	main._show_entry()
+	main.code_edit.text = CODE
+	main._on_continue()          # official=false -> session_begin YAZILMAMALI
+	main._on_intro_done()
+	main.cb_gravity.button_pressed = true
+	main.cb_gravity.toggled.emit(true)
+	main._on_run()
+	if tele.event_count() != 0:
+		print("FAIL: deneme modunda %d telemetri olayı yazıldı" % tele.event_count()); fails += 1
+	else:
+		print("OK  : deneme modunda telemetri yazılmıyor")
+	Session.activate(CODE)
+	main._show_entry()
+	main.code_edit.text = CODE
+	main._on_continue()          # official=true
+	main._on_intro_done()
+	main.cb_air.button_pressed = true
+	main.cb_air.toggled.emit(true)
+	main._set_friction(2)
+	main._on_run()
+	var tele_txt: String = tele.read_all()
+	var types := {}
+	for line in tele_txt.split("\n"):
+		if line.strip_edges() == "":
+			continue
+		var d = JSON.parse_string(line)
+		if d is Dictionary:
+			types[d.get("type", "?")] = int(types.get(d.get("type", "?"), 0)) + 1
+	print("OLAY TÜRLERİ: ", types)
+	for must in ["session_begin", "decision_start", "option_toggle", "param_change", "answer_submit"]:
+		if not types.has(must):
+			print("FAIL: '%s' olayı kaydedilmedi" % must); fails += 1
+	if fails == 0:
+		print("OK  : telemetri olay akışı tam (resmi modda)")
 
 	print("\n=== SONUÇ: %s ===" % ("TÜM TESTLER GEÇTİ" if fails == 0 else "%d HATA" % fails))
 	quit(0 if fails == 0 else 1)

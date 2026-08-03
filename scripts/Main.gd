@@ -68,6 +68,8 @@ var decision_started := 0.0   # soru gösterildiği an (karar süresi ölçümü
 var sfx_kick: AudioStreamPlayer
 var sfx_goal: AudioStreamPlayer
 var save_dialog: FileDialog
+var events_dialog: FileDialog
+@onready var Tele: Node = get_node("/root/Telemetry")
 
 func _ready() -> void:
 	_build_header()
@@ -83,6 +85,9 @@ func _ready() -> void:
 	_show_entry()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and event.keycode == KEY_F8:
+		_export_events()                       # etkileşim (JSONL) verisini dışa aktar
+		return
 	if event is InputEventKey and event.pressed and event.keycode == KEY_F9:
 		_on_data_status()
 		return
@@ -309,11 +314,20 @@ func _force_box(parent: VBoxContainer, title: String, sub: String) -> CheckBox:
 	h.add_child(v)
 	v.add_child(_label(title, 15, TXT))
 	v.add_child(_label(sub, 12, TXT_MUTED))
+	# hover kutunun tamamı için tek parça olsun: iç kontrolleri mouse'a kapat,
+	# yalnızca pc mouse alsın → checkbox/label üstünde enter/leave titremesi olmaz
+	for ch in pc.find_children("*", "Control", true, false):
+		ch.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# telemetri: kutuya mouse girme/çıkma (ilk yaklaşılan seçenek + dwell) ve işaretleme
+	pc.mouse_entered.connect(func(): Tele.option_hover(title, true))
+	pc.mouse_exited.connect(func(): Tele.option_hover(title, false))
 	pc.gui_input.connect(func(ev):
 		if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
 			cb.button_pressed = not cb.button_pressed
 			cb.toggled.emit(cb.button_pressed))
-	cb.toggled.connect(func(_on): _update_preview())
+	cb.toggled.connect(func(on):
+		Tele.option_toggle(title, on)
+		_update_preview())
 	return cb
 
 ## ------------------- SONUÇ KUTUSU (GOL / KAÇTI) -------------------
@@ -472,6 +486,7 @@ func _on_reset_sim() -> void:
 	result_center.visible = false
 	field.reset()
 	_reset_hud_values()
+	Tele.decision_start(attempt + 1)
 	_center_question()
 	decision_started = Time.get_ticks_msec() / 1000.0
 	_update_preview()
@@ -584,6 +599,16 @@ func _build_save_dialog() -> void:
 		var ok := DataLog.export_to(p)
 		_toast("%d satır dışa aktarıldı" % DataLog.row_count() if ok else "Henüz kayıtlı veri yok"))
 	add_child(save_dialog)
+	# etkileşim (JSONL) verisi için ayrı dışa-aktarma diyaloğu (F8)
+	events_dialog = FileDialog.new()
+	events_dialog.access = FileDialog.ACCESS_FILESYSTEM
+	events_dialog.file_mode = FileDialog.FILE_MODE_SAVE_FILE
+	events_dialog.current_file = "events_log.jsonl"
+	events_dialog.filters = PackedStringArray(["*.jsonl ; JSON Lines"])
+	events_dialog.file_selected.connect(func(p):
+		var ok: bool = Tele.export_to(p)
+		_toast("%d etkileşim olayı dışa aktarıldı" % int(Tele.event_count()) if ok else "Henüz etkileşim verisi yok"))
+	add_child(events_dialog)
 
 # ---------------------------------------------------------------- helpers
 
@@ -637,6 +662,7 @@ func _toast(msg: String) -> void:
 # ---------------------------------------------------------------- flow
 
 func _show_entry() -> void:
+	Tele.end_session()
 	howto_card.visible = false
 	hud_card.visible = false
 	result_center.visible = false
@@ -681,6 +707,7 @@ func _on_continue() -> void:
 	participant_code = c
 	group = Codes.group_label(c)
 	official = Session.is_active(c)
+	Tele.begin_session(participant_code, group, Codes.has_seen_topic(c), official)
 	attempt = 0
 	var mode_txt := "VERİ TOPLANIYOR" if official else "DENEME MODU — veri kaydedilmiyor"
 	mode_banner.text = ""   # veri kaydı bilgisi öğrenciye gösterilmez (F9 ile görülür)
@@ -700,6 +727,7 @@ func _on_intro_done() -> void:
 	btn_start.disabled = false
 	if field.playing or field.finished:
 		return   # uçuş bir şekilde başladıysa soru kutusunu ÜSTÜNE açma
+	Tele.decision_start(attempt + 1)
 	_center_question()
 	decision_started = Time.get_ticks_msec() / 1000.0
 	_update_preview()
@@ -707,6 +735,7 @@ func _on_intro_done() -> void:
 # ------------------------------------------------------------ kuvvet önizleme
 
 func _set_friction(idx: int) -> void:
+	Tele.param_change("friction", ["Az", "Orta", "Fazla"][idx])
 	friction_level = idx
 	for i in range(friction_btns.size()):
 		friction_btns[i].button_pressed = (i == idx)
@@ -785,6 +814,8 @@ func _on_run() -> void:
 	var decision_s := maxf(Time.get_ticks_msec() / 1000.0 - decision_started, 0.0)
 	# yalnızca yönetici bu kod için veri toplamayı açtıysa kaydet
 	official = Session.is_active(participant_code)
+	Tele.set_official(official)
+	Tele.answer_submit(g, k, a, ["Az", "Orta", "Fazla"][friction_level], correct, category)
 	if official:
 		DataLog.log_attempt(participant_code, group, Codes.has_seen_topic(participant_code),
 			"official", attempt, g, k, a, friction_level, kick_force, v0, angle,
@@ -824,8 +855,10 @@ func _on_flight_finished() -> void:
 		result_title.text = "Top kaleyi aştı"
 		result_sub.text = "Simülasyon bitmiştir · hedefi %.1f m geçti" % (field.impact_x - FieldView.GOAL_X)
 	result_center.visible = true
+	Tele.run_complete(gol, field.impact_x)
 
 func _on_replay() -> void:
+	Tele.replay()
 	result_center.visible = false
 	var dk := Physics.drag_for_level(friction_level)
 	var tx := field.target_x
@@ -835,12 +868,21 @@ func _on_replay() -> void:
 		Physics.real_path(tx, FieldView.RING_BULLS))
 
 func _on_change_answer() -> void:
+	Tele.answer_change()
 	result_center.visible = false
 	field.reset()
 	_reset_hud_values()
+	Tele.decision_start(attempt + 1)
 	_center_question()
 	decision_started = Time.get_ticks_msec() / 1000.0
 	_update_preview()
+
+func _export_events() -> void:
+	if OS.has_feature("web"):
+		if not Tele.web_download():
+			_toast("Henüz etkileşim verisi yok")
+	else:
+		events_dialog.popup_centered(Vector2i(720, 480))
 
 func _export_csv() -> void:
 	if OS.has_feature("web"):

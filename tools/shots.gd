@@ -3,6 +3,10 @@ const CODE := "L-0-NN-N-E-115"
 const OUT := "user://shots"
 func _init() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT))
+	# --script modunda autoload'lar kurulmaz: Telemetry'yi elle ekle
+	var tele = load("res://scripts/Telemetry.gd").new()
+	tele.name = "Telemetry"
+	root.add_child(tele)
 	var main = load("res://scenes/Main.tscn").instantiate()
 	root.add_child(main)
 	await process_frame; await process_frame
