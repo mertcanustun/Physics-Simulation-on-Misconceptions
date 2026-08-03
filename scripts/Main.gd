@@ -15,10 +15,10 @@ var participant_code := ""
 var group := ""
 var attempt := 0
 var official := false
-var v0 := 30.0   # doğru cevap (yerçekimi+hava) bu hızda topu kaleye sokar
-var angle := 45.0
+var v0 := Physics.FIXED_V0     # SABİT — kullanıcı değiştiremez
+var angle := Physics.FIXED_ANGLE  # SABİT
 var friction_level := 1   # 0=Az, 1=Orta, 2=Fazla (Orta = doğru senaryo)
-var kick_force := 6.0     # vuruş kuvveti F büyüklüğü (yanılgı; kullanıcı ayarlar)
+var kick_force := Physics.IMPETUS_ACC   # SABİT (yanılgı kuvvetinin büyüklüğü)
 
 var field: FieldView
 var entry_center: CenterContainer
@@ -31,6 +31,26 @@ var admin_status: Label
 var btn_activate: Button
 var btn_stop: Button
 var kick_panel: PanelContainer
+var kick_center: CenterContainer
+var q_intro: Label
+var q_hint: Label
+var q_run_btn: Button
+var top_bar: PanelContainer
+var howto_card: PanelContainer
+var howto_body: Label
+var hud_card: PanelContainer
+var hud_speed: Label
+var hud_choice: Label
+var hud_vx: Label
+var hud_vy: Label
+var last_vx := -999.0
+var result_center: CenterContainer
+var result_badge: PanelContainer
+var result_badge_lbl: Label
+var result_title: Label
+var result_sub: Label
+var btn_start: Button
+var header_sub: Label
 var mode_banner: Label
 var cb_gravity: CheckBox
 var cb_kick: CheckBox
@@ -38,12 +58,13 @@ var cb_air: CheckBox
 var kick_box: VBoxContainer
 var friction_box: HBoxContainer
 var friction_btns: Array = []
-var settings_box: VBoxContainer
-var feedback_panel: PanelContainer
-var fb_title: Label
-var fb_text: Label
-var header_sub: Label
-var speed_lbl: Label
+var control_bar: PanelContainer
+var btn_replay: Button
+var btn_change: Button
+var btn_pause: Button
+var btn_reset: Button
+var sim_paused := false
+var decision_started := 0.0   # soru gösterildiği an (karar süresi ölçümü)
 var sfx_kick: AudioStreamPlayer
 var sfx_goal: AudioStreamPlayer
 var save_dialog: FileDialog
@@ -54,79 +75,420 @@ func _ready() -> void:
 	_build_entry_panel()
 	_build_admin_panel()
 	_build_kick_panel()
-	_build_feedback_panel()
+	_build_howto_card()
+	_build_hud()
+	_build_result_modal()
+	_build_control_bar()
 	_build_save_dialog()
 	_show_entry()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and event.keycode == KEY_F9:
+		_on_data_status()
+		return
+	if event is InputEventKey and event.pressed and event.keycode == KEY_F10:
+		_export_csv()
+		return
 	if event is InputEventKey and event.pressed and event.keycode == KEY_F11:
 		var w := get_window()
 		w.mode = Window.MODE_WINDOWED if w.mode == Window.MODE_FULLSCREEN else Window.MODE_FULLSCREEN
 
 # ---------------------------------------------------------------- UI builders
 
-func _panel_style(radius := 14) -> StyleBoxFlat:
+## ============================ KOYU TEMA (dark UI) ============================
+const BG := Color("0f1115")
+const CARD := Color("1a1d24")
+const CARD2 := Color("232833")
+const TXT := Color("e8eaed")
+const TXT_MUTED := Color("9aa3af")
+const ACCENT := Color("22c55e")
+const ACCENT_DK := Color("16a34a")
+const DANGER := Color("ef4444")
+const INFO := Color("3b82f6")
+
+func _card_style(radius := 16, bg := CARD, border := Color(1, 1, 1, 0.07)) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color.WHITE
+	sb.bg_color = bg
 	sb.set_corner_radius_all(radius)
-	sb.shadow_color = Color(0, 0, 0, 0.12)
-	sb.shadow_size = 12
-	sb.set_content_margin_all(22)
+	sb.border_color = border
+	sb.set_border_width_all(1)
+	sb.shadow_color = Color(0, 0, 0, 0.45)
+	sb.shadow_size = 18
+	sb.set_content_margin_all(18)
 	return sb
 
-func _build_header() -> void:
-	var bar := PanelContainer.new()
+func _panel_style(radius := 16) -> StyleBoxFlat:
+	return _card_style(radius)
+
+func _btn_style(bg: Color, border := Color(0, 0, 0, 0)) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color.WHITE
-	sb.border_color = Color("e2e8f0")
+	sb.bg_color = bg
+	sb.set_corner_radius_all(10)
+	sb.border_color = border
+	sb.set_border_width_all(1 if border.a > 0.0 else 0)
+	sb.content_margin_left = 14
+	sb.content_margin_right = 14
+	sb.content_margin_top = 9
+	sb.content_margin_bottom = 9
+	return sb
+
+func _style_button(b: Button, bg: Color, fg: Color, border := Color(0, 0, 0, 0)) -> void:
+	b.add_theme_stylebox_override("normal", _btn_style(bg, border))
+	b.add_theme_stylebox_override("hover", _btn_style(bg.lightened(0.10), border))
+	b.add_theme_stylebox_override("pressed", _btn_style(bg.darkened(0.15), border))
+	b.add_theme_stylebox_override("focus", _btn_style(bg, border))
+	b.add_theme_stylebox_override("disabled", _btn_style(bg.darkened(0.35), border))
+	for st in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
+		b.add_theme_color_override(st, fg)
+	b.add_theme_color_override("font_disabled_color", Color(fg, 0.45))
+
+## ---------------------------- ÜST ÇUBUK (koyu) ----------------------------
+func _build_header() -> void:
+	top_bar = PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color("14171d")
+	sb.border_color = Color(1, 1, 1, 0.06)
 	sb.border_width_bottom = 1
-	sb.set_content_margin_all(12)
-	bar.add_theme_stylebox_override("panel", sb)
-	bar.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	add_child(bar)
+	sb.content_margin_left = 18
+	sb.content_margin_right = 18
+	sb.content_margin_top = 12
+	sb.content_margin_bottom = 12
+	top_bar.add_theme_stylebox_override("panel", sb)
+	top_bar.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	add_child(top_bar)
 	var h := HBoxContainer.new()
-	h.add_theme_constant_override("separation", 14)
-	bar.add_child(h)
-	var t := Label.new()
-	t.text = "Kicked-Ball Simulation"
-	t.add_theme_font_size_override("font_size", 19)
-	t.add_theme_color_override("font_color", DARK)
-	h.add_child(t)
-	header_sub = Label.new()
-	header_sub.add_theme_color_override("font_color", MUTED)
+	h.add_theme_constant_override("separation", 12)
+	top_bar.add_child(h)
+	h.add_child(_label("⚽  Kicked-Ball Simulation", 18, TXT))
+	header_sub = _label("", 13, TXT_MUTED)
 	h.add_child(header_sub)
-	var spacer := Control.new()
-	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	h.add_child(spacer)
-	speed_lbl = Label.new()
-	speed_lbl.add_theme_font_size_override("font_size", 16)
-	speed_lbl.add_theme_color_override("font_color", GREEN)
-	h.add_child(speed_lbl)
-	var spacer2 := Control.new()
-	spacer2.custom_minimum_size.x = 14
-	h.add_child(spacer2)
-	var status := LinkButton.new()
-	status.text = "veri durumu"
-	status.pressed.connect(_on_data_status)
-	h.add_child(status)
-	var exp := LinkButton.new()
-	exp.text = "CSV dışa aktar"
-	exp.pressed.connect(func(): save_dialog.popup_centered(Vector2i(720, 480)))
-	h.add_child(exp)
+
+## ------------------- "NASIL ÇALIŞIR?" kartı (sol üst) -------------------
+func _build_howto_card() -> void:
+	howto_card = PanelContainer.new()
+	howto_card.add_theme_stylebox_override("panel", _card_style(14))
+	howto_card.position = Vector2(24, 78)
+	howto_card.custom_minimum_size = Vector2(300, 0)
+	add_child(howto_card)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 8)
+	howto_card.add_child(v)
+	var head := HBoxContainer.new()
+	v.add_child(head)
+	head.add_child(_label("ℹ  Nasıl çalışır?", 14, TXT))
+	var sp := Control.new()
+	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(sp)
+	var tog := Button.new()
+	tog.text = "▾"
+	tog.flat = true
+	tog.custom_minimum_size = Vector2(26, 22)
+	tog.add_theme_color_override("font_color", TXT_MUTED)
+	head.add_child(tog)
+	howto_body = _label("Oyuncu topa vuruyor. Top havadayken karşına bir soru çıkacak: topa hangi kuvvetler etki ediyor? İşaretle, sonra topun kaleye gidip gitmediğini izle. Vuruş gücü ve açısı sabittir — sonucu yalnızca senin kuvvet seçimin belirler.", 12, TXT_MUTED)
+	howto_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	howto_body.custom_minimum_size.x = 264
+	v.add_child(howto_body)
+	tog.pressed.connect(func():
+		howto_body.visible = not howto_body.visible
+		tog.text = "▾" if howto_body.visible else "▸")
+
+## ------------------- SOL HUD: yörünge açıklaması + HIZ -------------------
+func _build_hud() -> void:
+	hud_card = PanelContainer.new()
+	hud_card.add_theme_stylebox_override("panel", _card_style(14))
+	hud_card.position = Vector2(24, 390)
+	hud_card.custom_minimum_size = Vector2(206, 0)
+	add_child(hud_card)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 4)
+	hud_card.add_child(v)
+	hud_choice = _label("Seçimin: —", 12, Color("cbd5e1"))
+	hud_choice.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hud_choice.custom_minimum_size.x = 190
+	v.add_child(hud_choice)
+	v.add_child(_spacer(6))
+	v.add_child(_label("YÖRÜNGELER", 11, Color(ACCENT, 0.85)))
+	v.add_child(_label("—  senin tahminin", 12, Color("6ee7a8")))
+	v.add_child(_label("···  gerçek yol (hayalet)", 12, Color("cbd5e1")))
+	v.add_child(_spacer(8))
+	v.add_child(_label("TOPUN HIZI", 11, TXT_MUTED))
+	hud_speed = _label("0.0 m/s", 30, ACCENT)
+	v.add_child(hud_speed)
+	hud_vx = _label("vx (yatay) 0.0 m/s", 13, Color("f59e0b"))
+	v.add_child(hud_vx)
+	hud_vy = _label("vy (dikey) 0.0 m/s", 13, Color("a855f7"))
+	v.add_child(hud_vy)
+
+func _on_speed_report(sp: float, vx: float, vy: float) -> void:
+	if hud_speed:
+		hud_speed.text = "%.1f m/s" % sp
+	if hud_vx:
+		# yatay hız: hava direnci yoksa DEĞİŞMEZ -> "sabit" etiketi bunu görünür kılar
+		var steady := absf(vx - last_vx) < 0.05 and last_vx > -900.0
+		hud_vx.text = "vx (yatay) %.1f m/s%s" % [vx, "   · sabit" if steady else ""]
+		hud_vx.add_theme_color_override("font_color", ACCENT if steady else Color("f59e0b"))
+		last_vx = vx
+	if hud_vy:
+		hud_vy.text = "vy (dikey) %.1f m/s" % (0.0 if absf(vy) < 0.05 else vy)
+		hud_vy.add_theme_color_override("font_color", DANGER if absf(vy) < 1.2 else Color("a855f7"))
+
+## ------------------- SORU KUTUSU (ortada, modal) -------------------
+func _build_kick_panel() -> void:
+	kick_center = CenterContainer.new()
+	kick_center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(kick_center)
+	kick_panel = PanelContainer.new()
+	kick_panel.add_theme_stylebox_override("panel", _card_style(18))
+	kick_panel.custom_minimum_size = Vector2(520, 0)
+	kick_center.add_child(kick_panel)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 10)
+	kick_panel.add_child(v)
+	v.add_child(_label("Top havada  🏃 ➡ ⚽", 24, TXT))
+	mode_banner = _label("", 11, Color("f59e0b"))
+	v.add_child(mode_banner)
+	q_intro = _label("Az önce bir futbol oyuncusu topa vurdu; top şu anda havada.\n\nYAPMAN GEREKEN: Topa etki ettiğini düşündüğün kuvvetlerin HEPSİNİ işaretle, sonra aşağıdaki yeşil düğmeye bas. Top senin seçimine göre uçacak; kesikli çizgi ve soluk top ise gerçekte olanı gösterecek. Doğru seçersen top kaledeki hedefe düşer.", 14, TXT_MUTED)
+	q_intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	q_intro.custom_minimum_size.x = 480
+	v.add_child(q_intro)
+	q_hint = _label("SENİN SEÇİMİN", 11, Color(ACCENT, 0.9))
+	q_hint.visible = false
+	v.add_child(q_hint)
+	v.add_child(_spacer(4))
+	cb_gravity = _force_box(v, "Yerçekimi", "topu aşağı çeker")
+	cb_kick = _force_box(v, "Vuruş kuvveti F", "temas bittikten sonra da itmeye devam eder")
+	kick_box = VBoxContainer.new()
+	kick_box.visible = false
+	v.add_child(kick_box)
+	cb_air = _force_box(v, "Hava direnci", "topu yavaşlatır")
+	friction_box = HBoxContainer.new()
+	friction_box.add_theme_constant_override("separation", 8)
+	friction_box.visible = false
+	v.add_child(friction_box)
+	friction_btns.clear()
+	var names := ["Az", "Orta", "Fazla"]
+	for i in range(3):
+		var b := Button.new()
+		b.text = names[i]
+		b.toggle_mode = true
+		b.button_pressed = (i == friction_level)
+		b.custom_minimum_size = Vector2(84, 34)
+		_style_button(b, CARD2 if i != friction_level else ACCENT_DK, TXT)
+		var idx := i
+		b.pressed.connect(func(): _set_friction(idx))
+		friction_btns.append(b)
+		friction_box.add_child(b)
+	cb_air.toggled.connect(func(on): friction_box.visible = on; _update_preview())
+	v.add_child(_spacer(8))
+	q_run_btn = Button.new()
+	q_run_btn.text = "Ne olacağını gör"
+	q_run_btn.custom_minimum_size = Vector2(480, 46)
+	_style_button(q_run_btn, ACCENT_DK, Color.WHITE)
+	q_run_btn.pressed.connect(_on_run)
+	v.add_child(q_run_btn)
+
+func _force_box(parent: VBoxContainer, title: String, sub: String) -> CheckBox:
+	var pc := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = CARD2
+	sb.set_corner_radius_all(12)
+	sb.set_content_margin_all(12)
+	sb.border_color = Color(1, 1, 1, 0.05)
+	sb.set_border_width_all(1)
+	pc.add_theme_stylebox_override("panel", sb)
+	parent.add_child(pc)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 12)
+	pc.add_child(h)
+	var cb := CheckBox.new()
+	cb.add_theme_color_override("font_color", TXT)
+	h.add_child(cb)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 1)
+	h.add_child(v)
+	v.add_child(_label(title, 15, TXT))
+	v.add_child(_label(sub, 12, TXT_MUTED))
+	pc.gui_input.connect(func(ev):
+		if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
+			cb.button_pressed = not cb.button_pressed
+			cb.toggled.emit(cb.button_pressed))
+	cb.toggled.connect(func(_on): _update_preview())
+	return cb
+
+## ------------------- SONUÇ KUTUSU (GOL / KAÇTI) -------------------
+func _build_result_modal() -> void:
+	result_center = CenterContainer.new()
+	result_center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	result_center.visible = false
+	add_child(result_center)
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", _card_style(18))
+	panel.custom_minimum_size = Vector2(520, 0)
+	result_center.add_child(panel)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 12)
+	v.alignment = BoxContainer.ALIGNMENT_CENTER
+	panel.add_child(v)
+	var badge_row := HBoxContainer.new()
+	badge_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	v.add_child(badge_row)
+	result_badge = PanelContainer.new()
+	badge_row.add_child(result_badge)
+	result_badge_lbl = _label("", 13, DANGER)
+	var bsb := StyleBoxFlat.new()
+	bsb.bg_color = Color(DANGER, 0.15)
+	bsb.set_corner_radius_all(999)
+	bsb.content_margin_left = 16
+	bsb.content_margin_right = 16
+	bsb.content_margin_top = 6
+	bsb.content_margin_bottom = 6
+	result_badge.add_theme_stylebox_override("panel", bsb)
+	result_badge.add_child(result_badge_lbl)
+	result_title = _label("", 22, TXT)
+	result_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(result_title)
+	result_sub = _label("Simülasyon bitmiştir.", 13, TXT_MUTED)
+	result_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(result_sub)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	v.add_child(row)
+	btn_replay = Button.new()
+	btn_replay.text = "Tekrar dene"
+	btn_replay.custom_minimum_size = Vector2(200, 46)
+	_style_button(btn_replay, CARD2, TXT, Color(1, 1, 1, 0.10))
+	btn_replay.pressed.connect(_on_replay)
+	row.add_child(btn_replay)
+	btn_change = Button.new()
+	btn_change.text = "Yeni cevap dene"
+	btn_change.custom_minimum_size = Vector2(220, 46)
+	_style_button(btn_change, ACCENT_DK, Color.WHITE)
+	btn_change.pressed.connect(_on_change_answer)
+	row.add_child(btn_change)
+
+## ------------------- ALT KONTROL ÇUBUĞU -------------------
+func _build_control_bar() -> void:
+	control_bar = PanelContainer.new()
+	control_bar.add_theme_stylebox_override("panel", _card_style(16, Color("14171d")))
+	control_bar.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	control_bar.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	control_bar.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	control_bar.offset_bottom = -20
+	add_child(control_bar)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 10)
+	control_bar.add_child(h)
+	btn_start = Button.new()
+	btn_start.text = "▶  Vuruşu başlat"
+	btn_start.custom_minimum_size = Vector2(160, 40)
+	_style_button(btn_start, ACCENT_DK, Color.WHITE)
+	btn_start.pressed.connect(_on_run)
+	h.add_child(btn_start)
+	btn_pause = Button.new()
+	btn_pause.text = "⏸  Durdur"
+	btn_pause.custom_minimum_size = Vector2(120, 40)
+	_style_button(btn_pause, CARD2, DANGER, Color(DANGER, 0.55))
+	btn_pause.pressed.connect(_on_pause_toggle)
+	h.add_child(btn_pause)
+	btn_reset = Button.new()
+	btn_reset.text = "↺  Sıfırla"
+	btn_reset.custom_minimum_size = Vector2(120, 40)
+	_style_button(btn_reset, CARD2, INFO, Color(INFO, 0.55))
+	btn_reset.pressed.connect(_on_reset_sim)
+	h.add_child(btn_reset)
+
+## SORU PANELİ: seçim aşamasında ORTADA (büyük), atış başlayınca SOLA sabitlenir
+## (kaybolmaz — öğrenci ne seçtiğini uçuş boyunca görebilir).
+func _center_question() -> void:
+	if kick_panel.get_parent() != kick_center:
+		kick_panel.get_parent().remove_child(kick_panel)
+		kick_center.add_child(kick_panel)
+	kick_panel.custom_minimum_size = Vector2(520, 0)
+	q_intro.visible = true
+	q_run_btn.visible = true
+	q_hint.visible = false
+	_set_force_rows_enabled(true)
+	kick_center.visible = true
+	howto_card.visible = true
+	btn_start.visible = true
+	btn_start.disabled = false
+	_update_choice_summary()
+
+## Atış başlayınca soru kutusu ("Top havada") ekrandan kalkar; öğrencinin
+## seçimi kaybolmaz — sol HUD kartında özet satır olarak görünmeye devam eder.
+func _reset_hud_values() -> void:
+	last_vx = -999.0
+	if hud_speed:
+		hud_speed.text = "0.0 m/s"
+	if hud_vx:
+		hud_vx.text = "vx (yatay) 0.0 m/s"
+		hud_vx.add_theme_color_override("font_color", Color("f59e0b"))
+	if hud_vy:
+		hud_vy.text = "vy (dikey) 0.0 m/s"
+		hud_vy.add_theme_color_override("font_color", Color("a855f7"))
+
+func _hide_question() -> void:
+	kick_center.visible = false
+	if kick_panel.get_parent() != kick_center:
+		kick_panel.get_parent().remove_child(kick_panel)
+		kick_center.add_child(kick_panel)
+	kick_panel.custom_minimum_size = Vector2(520, 0)
+	howto_card.visible = true
+	btn_start.visible = true
+	btn_start.disabled = true          # uçuş sırasında atış yapılamaz
+	_update_choice_summary()
+
+func _update_choice_summary() -> void:
+	if hud_choice == null:
+		return
+	var parts := PackedStringArray()
+	if cb_gravity.button_pressed:
+		parts.append("Yerçekimi")
+	if cb_kick.button_pressed:
+		parts.append("Vuruş kuvveti F")
+	if cb_air.button_pressed:
+		parts.append("Hava direnci (%s)" % ["Az", "Orta", "Fazla"][friction_level])
+	hud_choice.text = "Seçimin: " + (", ".join(parts) if parts.size() > 0 else "hiçbir kuvvet")
+
+func _set_force_rows_enabled(on: bool) -> void:
+	for cb in [cb_gravity, cb_kick, cb_air]:
+		if cb:
+			cb.disabled = not on
+	for b in friction_btns:
+		b.disabled = not on
+	friction_box.visible = cb_air.button_pressed if on else (cb_air.button_pressed)
+
+func _on_pause_toggle() -> void:
+	sim_paused = not sim_paused
+	field.set_paused(sim_paused)
+	btn_pause.text = "▶  Devam et" if sim_paused else "⏸  Durdur"
+
+func _on_reset_sim() -> void:
+	sim_paused = false
+	field.set_paused(false)
+	btn_pause.text = "⏸  Durdur"
+	result_center.visible = false
+	field.reset()
+	_reset_hud_values()
+	_center_question()
+	decision_started = Time.get_ticks_msec() / 1000.0
+	_update_preview()
 
 func _build_field() -> void:
 	field = FieldView.new()
 	field.set_anchors_preset(Control.PRESET_FULL_RECT)
 	field.offset_top = 52
 	field.flight_finished.connect(_on_flight_finished)
-	field.speed_report.connect(_on_speed_report)
 	field.intro_done.connect(_on_intro_done)
-	field.goal_scored.connect(_on_goal_scored)
+	field.target_hit.connect(_on_goal_scored)
+	field.speed_report.connect(_on_speed_report)   # HUD'daki hız değerlerini besler
 	add_child(field)
 	_build_audio()
 	move_child(field, 0)
 	var bg := ColorRect.new()
-	bg.color = Color("eef4fa")
+	bg.color = BG
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
 	move_child(bg, 0)
@@ -142,25 +504,28 @@ func _build_entry_panel() -> void:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 8)
 	panel.add_child(v)
-	v.add_child(_label("Kicked-Ball Simulation", 24, DARK))
-	v.add_child(_label("Kuvvet ve Hareket · kavramsal değişim prototipi (Simülasyon 1)", 13, MUTED))
+	v.add_child(_label("⚽  Kicked-Ball Simulation", 26, TXT))
+	v.add_child(_label("Kuvvet ve Hareket · kavramsal değişim prototipi (Simülasyon 1)", 13, TXT_MUTED))
 	v.add_child(_spacer(10))
-	v.add_child(_label("Kod", 15, DARK))
+	v.add_child(_label("Kod", 15, TXT))
 	code_edit = LineEdit.new()
+	code_edit.add_theme_color_override("font_color", TXT)
+	code_edit.add_theme_stylebox_override("normal", _btn_style(CARD2, Color(1,1,1,0.10)))
+	code_edit.add_theme_stylebox_override("focus", _btn_style(CARD2, Color(ACCENT,0.6)))
 	code_edit.placeholder_text = "Katılım kodu veya yönetici kodu"
 	code_edit.text_changed.connect(_on_code_changed)
 	code_edit.text_submitted.connect(func(_t): _on_continue())
 	v.add_child(code_edit)
-	v.add_child(_label("Yalnızca anonim kod. İsim kaydedilmez.", 12, MUTED))
+	v.add_child(_label("Yalnızca anonim kod. İsim kaydedilmez.", 12, TXT_MUTED))
 	v.add_child(_spacer(6))
-	group_lbl = _label("Grup: —", 14, MUTED)
+	group_lbl = _label("Grup: —", 14, TXT_MUTED)
 	v.add_child(group_lbl)
 	err_lbl = _label("", 12, RED)
 	err_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	err_lbl.custom_minimum_size.x = 400
 	v.add_child(err_lbl)
 	v.add_child(_spacer(8))
-	var btn := _green_button("Devam Et")
+	var btn := _dark_green_button("Devam Et")
 	btn.pressed.connect(_on_continue)
 	v.add_child(btn)
 
@@ -175,14 +540,16 @@ func _build_admin_panel() -> void:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 8)
 	panel.add_child(v)
-	v.add_child(_label("Yönetici Paneli", 22, DARK))
-	v.add_child(_label("Katılımcı kodunu ara, veri toplamayı başlat/durdur.", 13, MUTED))
+	v.add_child(_label("Yönetici Paneli", 22, TXT))
+	v.add_child(_label("Katılımcı kodunu ara, veri toplamayı başlat/durdur.", 13, TXT_MUTED))
 	v.add_child(_spacer(8))
 	admin_search = LineEdit.new()
+	admin_search.add_theme_color_override("font_color", TXT)
+	admin_search.add_theme_stylebox_override("normal", _btn_style(CARD2, Color(1,1,1,0.10)))
 	admin_search.placeholder_text = "örn. L-0-NN-N-E-428"
 	admin_search.text_changed.connect(_on_admin_search)
 	v.add_child(admin_search)
-	admin_status = _label("", 14, MUTED)
+	admin_status = _label("", 14, TXT_MUTED)
 	admin_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	admin_status.custom_minimum_size.x = 460
 	v.add_child(admin_status)
@@ -190,7 +557,7 @@ func _build_admin_panel() -> void:
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 10)
 	v.add_child(h)
-	btn_activate = _green_button("Veri toplamayı başlat")
+	btn_activate = _dark_green_button("Veri toplamayı başlat")
 	btn_activate.disabled = true
 	btn_activate.pressed.connect(_on_admin_activate)
 	h.add_child(btn_activate)
@@ -207,154 +574,6 @@ func _build_admin_panel() -> void:
 	back.pressed.connect(_show_entry)
 	v.add_child(back)
 
-func _build_kick_panel() -> void:
-	kick_panel = PanelContainer.new()
-	kick_panel.add_theme_stylebox_override("panel", _panel_style())
-	kick_panel.position = Vector2(28, 90)
-	kick_panel.custom_minimum_size = Vector2(340, 0)
-	add_child(kick_panel)
-	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 8)
-	kick_panel.add_child(v)
-	v.add_child(_label("Vuruştan önce", 19, DARK))
-	mode_banner = _label("", 12, Color("c2660a"))
-	v.add_child(mode_banner)
-	var q := _label("Oyuncu topa vurmak üzere. Top havada uçarken topa hangi kuvvetler etki eder? Sence geçerli olanların tümünü işaretle.", 13, Color("475569"))
-	q.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	q.custom_minimum_size.x = 300
-	v.add_child(q)
-	v.add_child(_spacer(4))
-	cb_gravity = _force_box(v, "Yerçekimi", "topu aşağı çeker")
-	cb_kick = _force_box(v, "Vuruş kuvveti F", "temas bittikten sonra da itmeye devam eder")
-
-	# Vuruş kuvveti büyüklüğü — yalnızca vuruş kuvveti seçiliyken görünür
-	kick_box = VBoxContainer.new()
-	kick_box.visible = false
-	kick_box.add_theme_constant_override("separation", 2)
-	var kf_lbl := _label("Vuruş kuvveti F: %d" % int(kick_force), 13, MUTED)
-	kick_box.add_child(kf_lbl)
-	var kf_slider := HSlider.new()
-	kf_slider.min_value = 2
-	kf_slider.max_value = 20
-	kf_slider.value = kick_force
-	kf_slider.value_changed.connect(func(val): kick_force = val; kf_lbl.text = "Vuruş kuvveti F: %d" % int(val); _update_preview())
-	kick_box.add_child(kf_slider)
-	v.add_child(kick_box)
-
-	cb_air = _force_box(v, "Hava direnci", "topu yavaşlatır")
-
-	# Sürtünme şiddeti — yalnızca hava direnci seçiliyken görünür
-	friction_box = HBoxContainer.new()
-	friction_box.add_theme_constant_override("separation", 6)
-	friction_box.visible = false
-	var fl := _label("Sürtünme:", 13, MUTED)
-	friction_box.add_child(fl)
-	for i in range(3):
-		var b := Button.new()
-		b.text = ["Az", "Orta", "Fazla"][i]
-		b.toggle_mode = true
-		b.button_pressed = (i == friction_level)
-		b.custom_minimum_size = Vector2(56, 30)
-		var idx := i
-		b.pressed.connect(func(): _set_friction(idx))
-		friction_btns.append(b)
-		friction_box.add_child(b)
-	v.add_child(friction_box)
-
-	# kuvvet seçimleri değişince önizleme oklarını güncelle
-	cb_gravity.toggled.connect(func(_p): _update_preview())
-	cb_kick.toggled.connect(func(on):
-		kick_box.visible = on
-		_update_preview())
-	cb_air.toggled.connect(func(on):
-		friction_box.visible = on
-		_update_preview())
-
-	v.add_child(_spacer(4))
-	var st := Button.new()
-	st.text = "▸ Senaryo ayarları"
-	st.flat = true
-	st.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	v.add_child(st)
-	settings_box = VBoxContainer.new()
-	settings_box.visible = false
-	v.add_child(settings_box)
-	st.pressed.connect(func():
-		settings_box.visible = not settings_box.visible
-		st.text = ("▾ Senaryo ayarları" if settings_box.visible else "▸ Senaryo ayarları"))
-	var v0_lbl := _label("Vuruş hızı: %d m/s" % int(v0), 13, MUTED)
-	settings_box.add_child(v0_lbl)
-	var v0_slider := HSlider.new()
-	v0_slider.min_value = 12; v0_slider.max_value = 36; v0_slider.value = v0
-	v0_slider.value_changed.connect(func(val): v0 = val; v0_lbl.text = "Vuruş hızı: %d m/s" % int(val); _update_preview())
-	settings_box.add_child(v0_slider)
-	var ang_lbl := _label("Vuruş açısı: %d°" % int(angle), 13, MUTED)
-	settings_box.add_child(ang_lbl)
-	var ang_slider := HSlider.new()
-	ang_slider.min_value = 15; ang_slider.max_value = 75; ang_slider.value = angle
-	ang_slider.value_changed.connect(func(val): angle = val; ang_lbl.text = "Vuruş açısı: %d°" % int(val); _update_preview())
-	settings_box.add_child(ang_slider)
-	v.add_child(_spacer(6))
-	var run := _green_button("Ne olacağını gör  →")
-	run.pressed.connect(_on_run)
-	v.add_child(run)
-
-func _force_box(parent: VBoxContainer, title: String, sub: String) -> CheckBox:
-	var pc := PanelContainer.new()
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color("f1f5f9")
-	sb.set_corner_radius_all(10)
-	sb.set_content_margin_all(10)
-	pc.add_theme_stylebox_override("panel", sb)
-	parent.add_child(pc)
-	var h := HBoxContainer.new()
-	h.add_theme_constant_override("separation", 10)
-	pc.add_child(h)
-	var cb := CheckBox.new()
-	h.add_child(cb)
-	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 0)
-	h.add_child(v)
-	v.add_child(_label(title, 15, DARK))
-	v.add_child(_label(sub, 12, MUTED))
-	pc.gui_input.connect(func(ev):
-		if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
-			cb.button_pressed = not cb.button_pressed)
-	return cb
-
-func _build_feedback_panel() -> void:
-	feedback_panel = PanelContainer.new()
-	feedback_panel.add_theme_stylebox_override("panel", _panel_style())
-	feedback_panel.custom_minimum_size = Vector2(380, 0)
-	feedback_panel.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	feedback_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	feedback_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	feedback_panel.offset_right = -24
-	feedback_panel.offset_bottom = -24
-	add_child(feedback_panel)
-	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 8)
-	feedback_panel.add_child(v)
-	v.add_child(_label("GERÇEK YÖRÜNGEYLE KARŞILAŞTIR", 11, Color("c2660a")))
-	fb_title = _label("", 19, DARK)
-	v.add_child(fb_title)
-	fb_text = _label("", 13, Color("475569"))
-	fb_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	fb_text.custom_minimum_size.x = 340
-	v.add_child(fb_text)
-	v.add_child(_spacer(6))
-	var h := HBoxContainer.new()
-	h.add_theme_constant_override("separation", 10)
-	v.add_child(h)
-	var replay := Button.new()
-	replay.text = "Tekrar oynat"
-	replay.custom_minimum_size = Vector2(120, 42)
-	replay.pressed.connect(_on_replay)
-	h.add_child(replay)
-	var change := _green_button("Cevabımı değiştir")
-	change.pressed.connect(_on_change_answer)
-	h.add_child(change)
-
 func _build_save_dialog() -> void:
 	save_dialog = FileDialog.new()
 	save_dialog.access = FileDialog.ACCESS_FILESYSTEM
@@ -367,6 +586,13 @@ func _build_save_dialog() -> void:
 	add_child(save_dialog)
 
 # ---------------------------------------------------------------- helpers
+
+func _dark_green_button(txt: String) -> Button:
+	var b := Button.new()
+	b.text = txt
+	b.custom_minimum_size = Vector2(150, 44)
+	_style_button(b, ACCENT_DK, Color.WHITE)
+	return b
 
 func _label(txt: String, size_px: int, col: Color) -> Label:
 	var l := Label.new()
@@ -411,14 +637,15 @@ func _toast(msg: String) -> void:
 # ---------------------------------------------------------------- flow
 
 func _show_entry() -> void:
+	howto_card.visible = false
+	hud_card.visible = false
+	result_center.visible = false
+	top_bar.visible = false
 	entry_center.visible = true
 	admin_center.visible = false
-	kick_panel.visible = false
-	feedback_panel.visible = false
+	kick_center.visible = false
+	control_bar.visible = false
 	field.visible = false
-	header_sub.text = ""
-	if speed_lbl:
-		speed_lbl.text = ""
 	code_edit.text = ""
 	group_lbl.text = "Grup: —"
 	err_lbl.text = ""
@@ -456,18 +683,25 @@ func _on_continue() -> void:
 	official = Session.is_active(c)
 	attempt = 0
 	var mode_txt := "VERİ TOPLANIYOR" if official else "DENEME MODU — veri kaydedilmiyor"
-	header_sub.text = "%s · %s · %s" % [participant_code, Codes.short_group(c), mode_txt]
-	mode_banner.text = mode_txt
+	mode_banner.text = ""   # veri kaydı bilgisi öğrenciye gösterilmez (F9 ile görülür)
 	mode_banner.add_theme_color_override("font_color", GREEN if official else Color("c2660a"))
 	entry_center.visible = false
 	field.visible = true
-	kick_panel.visible = false
-	feedback_panel.visible = false
+	btn_start.disabled = true      # giriş animasyonu bitmeden atış yok
+	howto_card.visible = true
+	hud_card.visible = true
+	top_bar.visible = true
+	kick_center.visible = false
+	control_bar.visible = true
 	# önce koşu-vuruş girişi; ayak topa değince (_on_intro_done) soru gösterilir
 	field.start_intro()
 
 func _on_intro_done() -> void:
-	kick_panel.visible = true
+	btn_start.disabled = false
+	if field.playing or field.finished:
+		return   # uçuş bir şekilde başladıysa soru kutusunu ÜSTÜNE açma
+	_center_question()
+	decision_started = Time.get_ticks_msec() / 1000.0
 	_update_preview()
 
 # ------------------------------------------------------------ kuvvet önizleme
@@ -493,20 +727,13 @@ func _on_goal_scored() -> void:
 	if sfx_goal and sfx_goal.stream:
 		sfx_goal.play()
 
-func _on_speed_report(sp: float, steady: bool) -> void:
-	if steady:
-		speed_lbl.text = "Hız: %d m/s (sabit)" % int(round(sp))
-	else:
-		speed_lbl.text = "Hız: %d m/s" % int(round(sp))
-
 func _update_preview() -> void:
+	_update_choice_summary()
 	# yalnızca karar aşamasında (kick paneli görünürken) önizleme çiz
-	if kick_panel == null or not kick_panel.visible:
+	if kick_panel == null or not kick_center.visible:
 		return
-	if speed_lbl:
-		speed_lbl.text = ""   # karar aşamasında hız gösterme
 	field.set_preview(cb_gravity.button_pressed, cb_kick.button_pressed,
-		cb_air.button_pressed, v0, angle, Physics.drag_for_level(friction_level), kick_force)
+		cb_air.button_pressed, Physics.drag_for_level(friction_level), kick_force)
 
 # ------------------------------------------------------------ admin actions
 
@@ -548,41 +775,86 @@ func _on_run() -> void:
 	var k := cb_kick.button_pressed
 	var a := cb_air.button_pressed
 	var dk := Physics.drag_for_level(friction_level)
-	var pred := Physics.simulate(v0, angle, g, k, a, dk, kick_force)
-	var real := Physics.real_path(v0, angle, dk)
+	var tx := field.target_x
+	var pred := Physics.simulate(g, k, a, dk, kick_force, tx, FieldView.RING_BULLS)
+	var real := Physics.real_path(tx, FieldView.RING_BULLS)
 	var correct := g and a and not k
-	# only record while an admin has this code's data collection active
+	var landing_x: float = pred["impact_x"]
+	var is_goal := landing_x > 0.0 and absf(landing_x - field.target_x) <= FieldView.RING_BULLS
+	var category: String = _feedback(g, k, a)[0]
+	var decision_s := maxf(Time.get_ticks_msec() / 1000.0 - decision_started, 0.0)
+	# yalnızca yönetici bu kod için veri toplamayı açtıysa kaydet
 	official = Session.is_active(participant_code)
 	if official:
 		DataLog.log_attempt(participant_code, group, Codes.has_seen_topic(participant_code),
-			"official", attempt, g, k, a, correct, v0, angle)
+			"official", attempt, g, k, a, friction_level, kick_force, v0, angle,
+			correct, category, is_goal, landing_x, decision_s)
 		Session.count_attempt(participant_code)
-	kick_panel.visible = false
-	feedback_panel.visible = false
+	_hide_question()
+	sim_paused = false
+	btn_pause.text = "⏸  Durdur"
+	field.set_paused(false)
 	field.set_forces(g, k, a, dk, kick_force)   # uçuş sırasında canlı kuvvet okları
 	if sfx_kick and sfx_kick.stream:
 		sfx_kick.play()                          # topa vuruş sesi
 	field.start_flight(pred, real)
 
 func _on_flight_finished() -> void:
-	var fb := _feedback(cb_gravity.button_pressed, cb_kick.button_pressed, cb_air.button_pressed)
-	fb_title.text = fb[0]
-	fb_text.text = fb[1]
-	feedback_panel.visible = true
+	var gol := field.hit_bulls
+	result_badge_lbl.text = "GOL" if gol else "KAÇTI"
+	result_badge_lbl.add_theme_color_override("font_color", ACCENT if gol else DANGER)
+	var bsb := StyleBoxFlat.new()
+	bsb.bg_color = Color(ACCENT if gol else DANGER, 0.15)
+	bsb.set_corner_radius_all(999)
+	bsb.content_margin_left = 16
+	bsb.content_margin_right = 16
+	bsb.content_margin_top = 6
+	bsb.content_margin_bottom = 6
+	result_badge.add_theme_stylebox_override("panel", bsb)
+	result_sub.text = "Simülasyon bitmiştir."
+	if gol:
+		result_title.text = "Top kaleye girdi!"
+		result_sub.text = "Simülasyon bitmiştir · tam isabet"
+	elif field.impact_x < 0.0:
+		result_title.text = "Top hiç yere inmedi"
+	elif field.impact_x < FieldView.GOAL_X:
+		result_title.text = "Top kaleye ulaşamadı"
+		result_sub.text = "Simülasyon bitmiştir · hedefin %.1f m önüne düştü" % (FieldView.GOAL_X - field.impact_x)
+	else:
+		result_title.text = "Top kaleyi aştı"
+		result_sub.text = "Simülasyon bitmiştir · hedefi %.1f m geçti" % (field.impact_x - FieldView.GOAL_X)
+	result_center.visible = true
 
 func _on_replay() -> void:
-	feedback_panel.visible = false
-	field.start_flight(field.predicted, field.real)
+	result_center.visible = false
+	var dk := Physics.drag_for_level(friction_level)
+	var tx := field.target_x
+	field.start_flight(
+		Physics.simulate(cb_gravity.button_pressed, cb_kick.button_pressed,
+			cb_air.button_pressed, dk, kick_force, tx, FieldView.RING_BULLS),
+		Physics.real_path(tx, FieldView.RING_BULLS))
 
 func _on_change_answer() -> void:
-	feedback_panel.visible = false
+	result_center.visible = false
 	field.reset()
-	kick_panel.visible = true
+	_reset_hud_values()
+	_center_question()
+	decision_started = Time.get_ticks_msec() / 1000.0
 	_update_preview()
 
+func _export_csv() -> void:
+	if OS.has_feature("web"):
+		if not DataLog.web_download():
+			_toast("Henüz kayıtlı veri yok")
+	else:
+		save_dialog.popup_centered(Vector2i(720, 480))
+
 func _on_data_status() -> void:
-	_toast("%d resmi deneme kayıtlı\nKayıt dosyası: %s" % [DataLog.row_count(),
-		ProjectSettings.globalize_path(DataLog.PATH)])
+	var where := "Tarayıcı deposu (IndexedDB)" if OS.has_feature("web") \
+		else ProjectSettings.globalize_path(DataLog.PATH)
+	var mode_now := "AKTİF" if (participant_code != "" and Session.is_active(participant_code)) else "kapalı"
+	_toast("Kayıtlı resmi deneme: %d\nBu kod için veri toplama: %s\nKayıt yeri: %s\n\nSon kayıtlar:\n%s" % [
+		DataLog.row_count(), mode_now, where, DataLog.tail(3)])
 
 # ---------------------------------------------------------------- feedback
 

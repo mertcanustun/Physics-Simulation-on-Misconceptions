@@ -177,3 +177,191 @@ geçmek için **düğüm eklemeye gerek yok**: aynı yerlerde `draw_texture` /
 Godot 4.5 ile `project.godot`'u aç → **F6** (Run Current Scene). Girişte katılımcı
 kodu iste: `data/codes.json`'daki herhangi biri (ör. `L-0-NN-N-E-428`). Admin paneli
 için `Y-ADM-996`. Veri `user://session_log.csv`'ye yazılır (repoda değil).
+
+---
+
+# Güncelleme — arayüz, hız gösterimi, loglama ve web sürümü
+
+## 1. Hız göstergesi topun üzerinde (üst çubuktan kaldırıldı)
+- `Main.gd`: üstteki `speed_lbl` ve `_on_speed_report` TAMAMEN kaldırıldı.
+- `FieldView._draw_velocity()`: topun merkezinden koyu antrasit **v oku**
+  (kuvvet oklarının renklerinden ayrı) + ince **yatay/dikey bileşen okları**.
+- `FieldView._draw_speed_readout()`: topun yanında `v = .. m/s` ve `vy = .. m/s`
+  kutusu. Kutu ekran kenarına taşarsa otomatik olarak topun soluna geçer.
+- Ayarlar: `VEL_SCALE` (px / m/s), `VEL_MAX` (ok üst sınırı), `C_VEL` (renk).
+
+## 2. Tepe noktası vurgusu (kavramsal hedef)
+- `|vy| < APEX_VY` olduğunda `apex_flash` tetiklenir ve rozet çizilir:
+  **"TEPE NOKTASI / dikey hız vy = 0 / ama ivme ↓ devam ediyor"**.
+- Aynı anda dikey bileşen oku kaybolur, mavi **Yerçekimi** oku tam boyda kalır —
+  "hız sıfırlanır ama ivme devam eder" görsel olarak kanıtlanır.
+- ÖNEMLİ: 45°'lik vuruşta tepede TOPLAM hız sıfır değildir, yalnızca dikey
+  bileşen sıfırlanır (ör. v = 15 m/s, vy = 0). Bu ayrım bilerek korunmuştur;
+  "hız tamamen sıfır" göstermek ön testteki 3. soruya ters bir kavram öğretirdi.
+
+## 3. Sağdaki bilgi kutucukları kaldırıldı
+- `_build_feedback_panel()` yerine `_build_control_bar()` geldi (altta ince çubuk).
+- Geri bildirim METNİ artık ekranda gösterilmiyor; ancak `_feedback()` fonksiyonu
+  duruyor ve seçilen yanılgı kategorisi CSV'ye `category` sütununda yazılıyor.
+- Metni geri getirmek isterseniz: `_on_flight_finished()` içinde `_feedback(...)`
+  sonucunu bir Label'a yazmanız yeterli (fonksiyon hazır duruyor).
+
+## 4. Oynatma hızı kontrolü
+- Alt çubukta 0.25× / 0.5× / 1× / 2× düğmeleri.
+- `FieldView.time_scale` yalnızca SİMÜLASYON zamanını ölçekler
+  (`_process` içinde `sdt = delta * time_scale`); arayüz normal hızda kalır.
+
+## 5. Vuruş animasyonundaki takılma giderildi
+- SEBEP: giriş animasyonu bitince oyuncu tüm vuruş dizisini oynatıp bir anda
+  `idle` karesine ZIPLIYORDU.
+- ÇÖZÜM: `kick_hold` — ayağın topa değdiği karede (`_contact_index()`) donar;
+  "Ne olacağını gör"e basılınca `kick_follow` ile kalan kareler akıcı oynar.
+- Ayrıca `_ready()` içinde ısınma: integratör + font ölçümü bir kez önceden
+  çalıştırılır (ilk vuruştaki tek karelik donma kalkar).
+
+## 6. Loglama — EKSİK ALANLAR TAMAMLANDI
+- ESKİ SÜRÜMDE sürtünme seviyesi ve vuruş kuvveti F büyüklüğü HİÇ KAYDEDİLMİYORDU.
+- Yeni CSV başlığı:
+  `timestamp_utc, session_id, participant_code, group, seen_topic, session_mode,
+   attempt, gravity, kick_force_sel, air_resistance, friction_level,
+   kick_force_mag, v0_mps, angle_deg, correct, category, goal, landing_x_m,
+   decision_seconds`
+- "veri durumu" penceresi artık kayıt sayısı + kayıt yeri + SON 3 KAYDI gösterir
+  (loglamanın çalıştığını sunumda gözle doğrulamak için).
+- Web sürümünde "CSV dışa aktar" tarayıcı indirmesi tetikler
+  (`DataLog.web_download()` — masaüstündeki dosya diyaloğu tarayıcıda çalışmaz).
+
+## 7. Testler (başsız — Godot açmadan çalışır)
+    godot --headless --path . --script tools/smoke_test.gd     # loglama doğrulaması
+    xvfb-run godot --path . --script tools/shots.gd            # ekran görüntüsü alır
+
+`smoke_test.gd` şunları doğrular: deneme modunda kayıt YOK; yönetici açınca
+kayıt VAR ve tüm seçimler birebir doğru; yanılgılı cevap `correct=false`;
+yönetici durdurunca kayıt kesilir.
+
+## 8. Web (HTML5) sürümü
+- `export_presets.cfg` eklendi (Web, **thread'siz** varyant → her statik
+  sunucuda özel başlık gerekmeden çalışır).
+- Dışa aktarma:
+
+      godot --headless --path . --export-release "Web" build/index.html
+
+- Hazır build ayrı zip olarak verildi (`kicked-ball-WEB-hazir.zip`).
+
+## Doğrulanmış fizik değerleri (v0=30 m/s, 45°)
+| Seçim | İniş | Gol? |
+|---|---|---|
+| Yerçekimi + Hava (Orta) — DOĞRU | 52.0 m | **EVET** (kale 49–52.4 m) |
+| Yalnız yerçekimi | 91.7 m | hayır |
+| Yerçekimi + F | 120+ m | hayır |
+| Yerçekimi + Hava + F | 84.1 m | hayır |
+| Hava "Az" (yanlış seviye) | 65.4 m | hayır |
+| Hava "Fazla" (yanlış seviye) | 39.5 m | hayır |
+
+---
+# Güncelleme — görev listesi uygulaması (koyu tema sürümü)
+
+- **Kademeli zoom out:** Kamera artık tek noktaya odaklanmıyor; top ilerledikçe
+  TÜM SAHNE yavaşça uzaklaşıyor (futbolcu küçülüyor). `FieldView._fit_camera()`
+  uçuş sonundaki oranı hesaplar, `_process` içinde `cam_zoom` buna yumuşak
+  geçişle iner.
+- **Yerdeki hedef:** Kale ağzına yatay dart tahtası serildi
+  (`_draw_ground_target`), merkezi doğru fiziğin indiği nokta.
+- **"Simülasyon bitmiştir"** mesajı sonuç kutusunda (koyu modal) yer alıyor;
+  FieldView'deki eski beyaz kutu kaldırıldı.
+- **"Veri toplanıyor" yazısı** öğrenci ekranından kaldırıldı (F9 ile görülür).
+- **Yönerge** soru modalinde "YAPMAN GEREKEN:" başlığıyla netleştirildi.
+- **docs/arayuz-incelemesi.md**: görev listesindeki "diğer fizik
+  simülasyonlarının arayüzünün incelenmesi" maddesi için hazırlanan not.
+
+---
+# Güncelleme — soru panelinin sabitlenmesi, sabit hız, vx
+
+- **Oynatma hızı düğmeleri KALDIRILDI.** Hız sabit: `FieldView.time_scale = 0.42`
+  (her kuvvet oku rahat izlenecek kadar yavaş). Değiştirmek isterseniz tek satır.
+- **Soru paneli artık kaybolmuyor:**
+  - Seçim aşamasında EKRANIN ORTASINDA, büyük (520 px).
+  - "Ne olacağını gör"e basılınca `_dock_question_left()` ile SOLA sabitlenir
+    (320 px): uzun yönerge ve düğme gizlenir, "SENİN SEÇİMİN" etiketi çıkar,
+    kutucuklar devre dışı kalır (uçuş sırasında değiştirilemez).
+  - "Yeni cevap dene" veya "Sıfırla" ile `_center_question()` -> yeniden ortada.
+- **"Vuruşu başlat" düğmesi** atış sırasında gizlenir (`btn_start.visible`).
+- **Bitişte** koyu sonuç kutusu: GOL / KAÇTI rozeti + "Simülasyon bitmiştir · ..."
+- **HUD'a vx eklendi:** `vx (yatay)` ve `vy (dikey)` ayrı satırlarda.
+  vx değişmediğinde yanına yeşil "· sabit" etiketi düşer — hava direnci
+  seçilmediğinde yatay hızın SABİT kaldığını (Newton 1) görünür kılar.
+
+---
+# Güncelleme — yerleşim düzeltmesi, soru kutusunun kapanması, vuruş zamanlaması
+
+- **Sabit yerleşim (referans görsellere göre):** "Nasıl çalışır?" kartı sol üstte
+  (24, 78), HUD kartı solda (24, 390) — konumlar artık hiçbir aşamada değişmiyor.
+  Soru kutusu ve sonuç kutusu ekranın ortasında.
+- **"Top havada" kutusu atıştan sonra EKRANDAN KALKAR** (`_hide_question()`).
+  Öğrencinin seçimi kaybolmaz: HUD kartının en üstünde
+  "Seçimin: Yerçekimi, Hava direnci (Orta)" satırı olarak görünmeye devam eder
+  (`_update_choice_summary`). "Yeni cevap dene" / "Sıfırla" ile kutu yeniden ortada açılır.
+- **Top, cevap verilmeden VURULMUYOR:** giriş animasyonu artık temas karesinde
+  değil, temastan HEMEN ÖNCEKİ karede duruyor (`_prekick_index()`), yani oyuncu
+  ayağını kaldırmış bekliyor. Vuruş ve topun hareketi ancak öğrenci cevabını
+  verip düğmeye bastığında gerçekleşiyor.
+- **"Vuruşu başlat" düğmesi** giriş animasyonu sürerken ve uçuş sırasında pasif.
+
+---
+# Güncelleme — vx vektörü ve hız değerlerinin sol karta taşınması
+
+- **vx ve vy artık gerçek, etiketli oklar** (eskiden soluk ince çizgilerdi):
+  vx turuncu (`C_VX = f59e0b`), vy mor (`C_VY = a855f7`), toplam hız v koyu.
+  Bileşenlerin uçlarından v'nin ucuna ince kılavuz çizgiler çizilir
+  (vx + vy = v ilişkisi görünür olsun diye).
+  - Hava direnci seçilmezse vx okunun boyu HİÇ değişmez (Newton 1).
+  - Tepe noktasında vy oku tamamen kaybolur, yerçekimi oku tam boyda kalır.
+- **Topun yanındaki beyaz değer kutusu kaldırıldı.** Hız değerleri artık
+  yalnızca sol HUD kartında: "TOPUN HIZI" (büyük), altında vx ve vy.
+  HUD'daki vx/vy yazı renkleri sahnedeki ok renkleriyle aynıdır; vy tepe
+  noktasına yaklaşınca kırmızıya döner.
+- Topun yanında yalnızca "TEPE NOKTASI" rozeti çizilmeye devam eder.
+
+---
+# Düzeltme — HUD hız değerleri 0.0'da takılı kalıyordu
+
+SEBEP: `FieldView.speed_report` sinyali yayınlanıyordu ama `Main._ready()`
+içindeki `connect` satırı önceki bir düzenlemede kaybolmuştu; bu yüzden
+`_on_speed_report` hiç çağrılmıyor, HUD "0.0 m/s" olarak kalıyordu.
+
+ÇÖZÜM:
+- `field.speed_report.connect(_on_speed_report)` satırı `_ready()`e geri eklendi.
+- `_reset_hud_values()`: yeni denemeye geçerken (Sıfırla / Yeni cevap dene)
+  değerler ve renkler sıfırlanır, önceki uçuşun son değeri ekranda kalmaz.
+
+---
+# Güncelleme — F kuvveti, mavi gökyüzü + gezegenler, küçülen oyuncu, jenerik futbolcu
+
+- **F kuvveti artırıldı:** `Physics.IMPETUS_ACC = 15.0` (istenirse 30.0, tek satır).
+  15 ile "yerçekimi+F" seçen top artık hiç yere inmiyor — yanılgı çok daha dramatik.
+- **Mavi gökyüzü:** gri arka plan yerine ufka açılan mavi; en üstte koyu UZAY
+  bandı, içinde yıldızlar ve 3 gezegen (halkalı, kızıl, ay) — `_draw_planets()`.
+  Ekran-sabit süslemedir, kamera zoomundan etkilenmez.
+- **Oyuncu artık gerçekten küçülüyor.** İki sebep vardı: (1) kamera zaten
+  ~1.0'da başlıyordu; şimdi `START_ZOOM = 1.55` ile yakından başlıyor.
+  (2) ASIL HATA: oyuncu sabit ekran boyunda çiziliyordu (`size.y * 0.18`),
+  zoom'u hiç hesaba katmıyordu; artık `size.y * 0.125 * cam_zoom`.
+  Bu yüzden `ORIGIN_X` 150→330 alındı (oyuncu sol HUD kartının arkasında
+  kalmasın diye).
+- **vx/vy okları topun üzerinden kaldırıldı** — yalnızca toplam hız (v) oku
+  kaldı; vx/vy sayısal değerleri sol HUD kartında görünmeye devam ediyor.
+- **Jenerik futbolcu:** sprite karelerindeki Arjantin açık mavisi (Messi kiti)
+  parlaklık korunarak kırmızıya boyandı (17 kare, kalıcı olarak PNG'lerde);
+  piksel-art yedek çizimin paleti de kırmızı-beyaz jenerik kite çevrildi.
+
+---
+# Güncelleme — tek ton gökyüzü + uzaya geçiş
+
+- Gökyüzü artık TEK TON mavi (`57a8ec`); sabit uzay bandı kaldırıldı.
+- Top ekranı terk edecek kadar yükselirse arka plan UZAYA döner:
+  `SPACE_START_M = 34` irtifasında geçiş başlar, `SPACE_FULL_M = 58`de
+  tamamlanır (`space_f` yumuşak geçiş). Yıldızlar ve gezegenler yalnızca bu
+  geçişle belirir. Doğru cevapta (tepe ~16 m) gökyüzü hep mavi kalır;
+  "vuruş kuvveti F" yanılgısında top 60+ m'ye çıktığı için öğrenci topun
+  uzaya kaçtığını görür — "bu kuvvetle top asla inmez" mesajını güçlendirir.
+- Küçük koruma: uçuş sürerken `_on_intro_done` soru kutusunu artık yeniden açamaz.
