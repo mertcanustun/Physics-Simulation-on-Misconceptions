@@ -239,6 +239,15 @@ için `Y-ADM-996`. Veri `user://session_log.csv`'ye yazılır (repoda değil).
 kayıt VAR ve tüm seçimler birebir doğru; yanılgılı cevap `correct=false`;
 yönetici durdurunca kayıt kesilir.
 
+    godot --headless --path . --script tools/physics_probe.gd    # fizik doğruluğu ölçümü
+
+`physics_probe.gd` — `Physics.gd`'yi DEĞİŞTİRMEDEN sayısal ölçüm basar (yerel
+bir RK4 referansıyla): integratör yakınsaması (Euler dt=1/240 vs RK4), drag
+katsayılarının gerçek topa (m/r/Cd) göre fiziksel türetimi, yuvarlanmada hava
+direnci + ROLL_FRICTION çakışmasının büyüklüğü, menzil tablosu, sekme sayısı.
+`Physics.gd` sabitleri (drag, IMPETUS_ACC, RESTITUTION vb.) değiştiğinde tekrar
+çalıştırıp aşağıdaki tabloyu güncellemek için kullanılabilir.
+
 ## 8. Web (HTML5) sürümü
 - `export_presets.cfg` eklendi (Web, **thread'siz** varyant → her statik
   sunucuda özel başlık gerekmeden çalışır).
@@ -249,14 +258,17 @@ yönetici durdurunca kayıt kesilir.
 - Hazır build ayrı zip olarak verildi (`kicked-ball-WEB-hazir.zip`).
 
 ## Doğrulanmış fizik değerleri (v0=30 m/s, 45°)
+> Güncelleme (2026-08-07, `tools/physics_probe.gd` ile ölçüldü): hava direnci
+> Az/Orta/Fazla seviyeleri kaldırıldı, tek sabit `Physics.DRAG_K = 0.025`
+> oldu; kale konumu (`FieldView.GOAL_X`) buna göre 49 m'den 34 m'ye taşındı
+> (doğru cevap yine GOL olsun diye). Tablo bu son koda göredir.
+
 | Seçim | İniş | Gol? |
 |---|---|---|
-| Yerçekimi + Hava (Orta) — DOĞRU | 52.0 m | **EVET** (kale 49–52.4 m) |
+| Yerçekimi + Hava — DOĞRU | 37.0 m | **EVET** (kale ~34–39 m) |
 | Yalnız yerçekimi | 91.7 m | hayır |
-| Yerçekimi + F | 120+ m | hayır |
-| Yerçekimi + Hava + F | 84.1 m | hayır |
-| Hava "Az" (yanlış seviye) | 65.4 m | hayır |
-| Hava "Fazla" (yanlış seviye) | 39.5 m | hayır |
+| Yerçekimi + F | top hiç yere inmiyor (uzaya kaçıyor) | hayır |
+| Yerçekimi + Hava + F | 93.0 m | hayır |
 
 ---
 # Güncelleme — görev listesi uygulaması (koyu tema sürümü)
@@ -385,3 +397,34 @@ içindeki `connect` satırı önceki bir düzenlemede kaybolmuştu; bu yüzden
   erişir; test betikleri aynı adla düğümü elle ekler. Oyun davranışı değişmez.
 - `_force_box` iyileştirmesi (Defne): kutu içi kontroller mouse'a kapatıldı,
   hover artık kutunun tamamı için tek parça (dwell ölçümü titremiyor).
+
+---
+# Güncelleme — simülasyon öncesi giriş popup'ı, hava direnci sadeleştirmesi
+
+## 1. "Nasıl çalışır?" giriş popup'ı
+- Simülasyon HİÇBİR ŞEY başlamadan (futbolcu koşup gelmeden) önce ortada bir
+  popup açılır; "Devam Et" düğmesine basılınca koşu-vuruş girişi başlar
+  (`Main._build_intro_modal`, `_on_intro_modal_continue`).
+- Sol üstteki eski sabit "ℹ Nasıl çalışır?" kartı (`howto_card`) tamamen
+  kaldırıldı — aynı bilgiyi artık popup veriyor, ikisi birden gereksizdi.
+- Not: `field.reset()` artık `_on_continue()` içinde de çağrılıyor (popup
+  gösterilmeden önce), çünkü `field.start_intro()` artık hemen çağrılmıyor —
+  eskiden reset yalnızca `start_intro()` içinden geliyordu.
+
+## 2. Hava direnci: Az/Orta/Fazla seviyesi kaldırıldı
+- "Hava direnci" artık Yerçekimi/Vuruş kuvveti gibi basit açık/kapalı bir
+  seçenek; alt seviye seçme düğmeleri (`friction_box`/`friction_btns`,
+  `_set_friction`) kaldırıldı.
+- `Physics.gd`: `DRAG_LOW/DRAG_MED/DRAG_HIGH` + `drag_for_level()` yerine
+  tek sabit **`DRAG_K = 0.025`** (`simulate()` ve `real_path()` bunu kullanır).
+- **Kale konumu buna göre taşındı:** `FieldView.GOAL_X` 49.0 m → **34.0 m**
+  (yeni k ile doğru cevabın inişi ~37.0 m'ye düştü; eski 49 m'de kale artık
+  hiç yakalanamazdı). `tools/physics_probe.gd` ile doğrulandı: doğru senaryo
+  yine GOL oluyor.
+- CSV şeması değişti: `friction_level` sütunu kaldırıldı (`DataLog.gd`
+  `HEADER`/`log_attempt`), `Telemetry.answer_submit`'ten `friction` parametresi
+  kaldırıldı. Var olan eski CSV dosyalarıyla sütun sayısı artık uyuşmaz —
+  yeni bir oturumda temiz başlamak gerekir.
+- `tools/smoke_test.gd` yeni şemaya göre güncellendi (sabit sütun indeksleri
+  kayan yerlerde düzeltildi, `param_change` artık tetiklenmediği için
+  zorunlu olay listesinden çıkarıldı).

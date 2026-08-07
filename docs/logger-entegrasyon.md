@@ -42,9 +42,8 @@ Hepsi tek satır. Doğru yerlere koymak yeter:
 | `_force_box` — her kuvvet kutusuna | `pc.mouse_entered.connect(func(): Telemetry.option_hover(title, true))` |
 | `_force_box` | `pc.mouse_exited.connect(func(): Telemetry.option_hover(title, false))` |
 | `_force_box` — `cb.toggled` içinde | `Telemetry.option_toggle(title, on)` |
-| `_set_friction` | `Telemetry.param_change("friction", ["Az","Orta","Fazla"][idx])` |
 | `_on_run` — official teyidinden sonra | `Telemetry.set_official(official)` |
-| `_on_run` | `Telemetry.answer_submit(g, k, a, ["Az","Orta","Fazla"][friction_level], correct, category)` |
+| `_on_run` | `Telemetry.answer_submit(g, k, a, correct, category)` |
 | `_on_replay` — başta | `Telemetry.replay()` |
 | `_on_flight_finished` — sonda | `Telemetry.run_complete(gol, field.impact_x)` |
 | `_show_entry` — başta | `Telemetry.end_session()` |
