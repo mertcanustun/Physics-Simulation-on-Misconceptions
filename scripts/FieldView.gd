@@ -6,6 +6,7 @@ extends Control
 
 signal flight_finished
 signal intro_done          # koşu-vuruş animasyonu bitti (soru gösterilebilir)
+signal pre_kick            # ayak topa değdi (küçük sıçrama) — Main burada vuruş sesini çalar
 signal target_hit          # GOL (alkış sesi)
 signal speed_report(speed: float, vx: float, vy: float)   # sol HUD kartı için
 
@@ -82,6 +83,11 @@ var fit_maxy := 20.0
 const INTRO_DUR := 1.25
 var intro_active := false
 var intro_t := 0.0
+# ayak topa değdi ama gerçek uçuş henüz yok: top küçük bir sıçrama yapar
+# (vuruş sesini görsel olarak justify etmek için), sonra soru popup'ı açılır.
+const PREKICK_DUR := 0.22
+var prekick_active := false
+var prekick_t := 0.0
 var kick_hold := false
 var kick_follow := false
 var kick_follow_t := 0.0
@@ -226,6 +232,8 @@ func reset() -> void:
 	paused = false
 	pv_active = false
 	intro_active = false
+	prekick_active = false
+	prekick_t = 0.0
 	kick_hold = false
 	kick_follow = false
 	kick_follow_t = 0.0
@@ -283,8 +291,16 @@ func _process(delta: float) -> void:
 		animating = true
 		if intro_t >= INTRO_DUR:
 			intro_active = false
+			prekick_active = true
+			prekick_t = 0.0
+			pre_kick.emit()   # ayak topa değdi: Main burada vuruş sesini çalar
+	if prekick_active:
+		prekick_t += delta * time_scale
+		animating = true
+		if prekick_t >= PREKICK_DUR:
+			prekick_active = false
 			kick_hold = true
-			intro_done.emit()
+			intro_done.emit()   # şimdi soru popup'ı açılabilir
 	if kick_follow:
 		kick_follow_t += sdt
 		animating = true
@@ -416,8 +432,13 @@ func _draw() -> void:
 			_draw_force_arrows(bp, vnow)
 			_draw_velocity(bp, vnow)
 			_draw_speed_readout(bp, vnow)
-	elif pv_active or intro_active:
+	elif pv_active or intro_active or prekick_active:
 		var b0 := _world_to_px(Vector2.ZERO) + Vector2(0, -10)
+		if prekick_active:
+			# ayak topa değdi: küçük bir sıçrama — vuruş sesini görsel olarak
+			# justify eder ama gerçek uçuş DEĞİL (top aynı yere iner)
+			var pk := clampf(prekick_t / PREKICK_DUR, 0.0, 1.0)
+			b0 += Vector2(6.0 * pk, -sin(PI * pk) * 16.0)
 		_draw_ball(b0)
 		if pv_active:
 			var launch := Vector2(cos(deg_to_rad(Physics.FIXED_ANGLE)), sin(deg_to_rad(Physics.FIXED_ANGLE))) * Physics.FIXED_V0
@@ -755,6 +776,8 @@ func _current_player_frame():
 			# (eskiden tüm vuruş dizisi burada bitip IDLE'a zıplıyordu = takılma)
 			var kp := clampf((p - 0.72) / 0.28, 0.0, 1.0)
 			return sp_kick[mini(int(kp * (_prekick_index() + 1)), _prekick_index())]
+	if prekick_active and not sp_kick.is_empty():
+		return sp_kick[_contact_index()]        # ayak topa değdi (küçük sıçrama anı)
 	if kick_hold and not sp_kick.is_empty():
 		return sp_kick[_prekick_index()]        # soru sorulurken: HENÜZ VURMADI
 	if kick_follow and not sp_kick.is_empty():

@@ -168,7 +168,7 @@ func _build_header() -> void:
 func _build_hud() -> void:
 	hud_card = PanelContainer.new()
 	hud_card.add_theme_stylebox_override("panel", _card_style(14))
-	hud_card.position = Vector2(24, 390)
+	hud_card.position = Vector2(24, 78)   # eski "Nasıl çalışır?" kartının yeri
 	hud_card.custom_minimum_size = Vector2(206, 0)
 	add_child(hud_card)
 	var v := VBoxContainer.new()
@@ -476,6 +476,7 @@ func _build_field() -> void:
 	field.offset_top = 52
 	field.flight_finished.connect(_on_flight_finished)
 	field.intro_done.connect(_on_intro_done)
+	field.pre_kick.connect(_on_pre_kick)
 	field.target_hit.connect(_on_goal_scored)
 	field.speed_report.connect(_on_speed_report)   # HUD'daki hız değerlerini besler
 	add_child(field)
@@ -730,6 +731,12 @@ func _on_goal_scored() -> void:
 	if sfx_goal and sfx_goal.stream:
 		sfx_goal.play()
 
+## Ayak topa değdi (küçük sıçrama, "Top havada" popup'ından HEMEN önce) —
+## vuruş sesi burada çalar ki top biraz havalanması sesi görsel olarak justify etsin.
+func _on_pre_kick() -> void:
+	if sfx_kick and sfx_kick.stream:
+		sfx_kick.play()
+
 func _update_preview() -> void:
 	_update_choice_summary()
 	# yalnızca karar aşamasında (kick paneli görünürken) önizleme çiz
@@ -800,8 +807,7 @@ func _on_run() -> void:
 	btn_pause.text = "⏸  Durdur"
 	field.set_paused(false)
 	field.set_forces(g, k, a, dk, kick_force)   # uçuş sırasında canlı kuvvet okları
-	if sfx_kick and sfx_kick.stream:
-		sfx_kick.play()                          # topa vuruş sesi
+	# vuruş sesi artık burada değil — küçük sıçrama anında (_on_pre_kick) çalınıyor
 	field.start_flight(pred, real)
 
 func _on_flight_finished() -> void:
