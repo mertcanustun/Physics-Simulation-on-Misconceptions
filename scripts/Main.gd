@@ -297,8 +297,12 @@ func _force_box(parent: VBoxContainer, key: String, display_title: String, sub: 
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 1)
 	h.add_child(v)
-	v.add_child(_label(display_title, 15, TXT))
-	v.add_child(_label(sub, 12, TXT_MUTED))
+	var title_lbl := _label(display_title, 15, TXT)
+	title_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title_lbl.custom_minimum_size.x = 420
+	v.add_child(title_lbl)
+	if sub.strip_edges() != "":
+		v.add_child(_label(sub, 12, TXT_MUTED))
 	# hover kutunun tamamı için tek parça olsun: iç kontrolleri mouse'a kapat,
 	# yalnızca pc mouse alsın → checkbox/label üstünde enter/leave titremesi olmaz
 	for ch in pc.find_children("*", "Control", true, false):
@@ -374,7 +378,7 @@ func _build_control_bar() -> void:
 	control_bar.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	control_bar.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	control_bar.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	control_bar.offset_bottom = -20
+	control_bar.offset_bottom = -4   # soru/sonuç popup'larıyla çakışmasın diye biraz daha aşağı
 	add_child(control_bar)
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 10)

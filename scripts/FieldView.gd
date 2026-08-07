@@ -393,8 +393,6 @@ func _draw() -> void:
 				draw_string(font, Vector2(gx - 10, ground_y + 22), "%d m" % m,
 					HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1, 1, 1, 0.55))
 		m += 10
-	# --- HEDEF TAHTASI: yere yatay serili dart tahtası (elips halkalar) ---
-	_draw_ground_target()
 	_draw_goal()
 	# --- oyuncu ---
 	var o := _world_to_px(Vector2.ZERO)
@@ -475,26 +473,6 @@ func _draw_planets(sky_h: float, a: float) -> void:
 
 ## YERDEKİ HEDEF — kale ağzına serili yatay dart tahtası (basık elipsler).
 ## Merkezi, doğru fiziğin indiği nokta: doğru cevapta top tam ortaya düşer.
-func _draw_ground_target() -> void:
-	var sc := _base_scale() * cam_zoom
-	var c := _world_to_px(Vector2(target_x, 0.0))
-	var squash := 0.34
-	var vis := maxf(1.0, 46.0 / maxf(2.6 * sc, 1.0))
-	var rings := [
-		{"r": 2.6, "c": Color("e8eaed")},
-		{"r": 1.8, "c": Color("1f2937")},
-		{"r": 1.0, "c": Color("e8eaed")},
-		{"r": 0.5, "c": Color("dc2626")},
-	]
-	for ring in rings:
-		var rr: float = ring["r"] * sc * vis
-		var pts := PackedVector2Array()
-		for i in range(36):
-			var a := TAU * float(i) / 36.0
-			pts.append(c + Vector2(cos(a) * rr, sin(a) * rr * squash))
-		draw_colored_polygon(pts, ring["c"])
-		draw_polyline(pts + PackedVector2Array([pts[0]]), Color(0, 0, 0, 0.35), 1.2)
-
 ## KALE — rijit çerçeve + örgü ağ (gol olunca ağ topun girdiği yerden şişer).
 func _draw_goal() -> void:
 	var scored := hit_bulls and finished
