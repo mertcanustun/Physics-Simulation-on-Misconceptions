@@ -530,10 +530,6 @@ func _draw_dotted_real() -> void:
 			draw_circle(cur, 2.6, C_REAL)          # nokta
 		prev = cur
 		i += 1
-	var font := get_theme_default_font()
-	if font and real.size() > 4:
-		var lp := _world_to_px(real[real.size() >> 2]["p"]) + Vector2(6, -14)
-		draw_string(font, lp, "gerçek yörünge", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, C_REAL)
 
 ## Gerçek yörüngedeki SOLUK TOP — tahmin topuyla aynı anda hareket eder.
 func _draw_ghost_ball(gp: Vector2) -> void:
