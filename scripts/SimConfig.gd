@@ -22,6 +22,12 @@ extends Resource
 @export_range(1.0, 20.0, 0.01, "suffix:m/s²") var gravity_g: float = 9.81
 @export_range(0.0, 0.1, 0.001, "suffix:kg/m") var drag_k: float = 0.025          ## hava direnci katsayısı
 @export_range(0.0, 40.0, 0.5, "suffix:m/s²") var impetus_acc: float = 15.0       ## "vuruş kuvveti F" yanılgısının büyüklüğü
+## Topun kütle ÇARPANI — 1.0 = mevcut ayarlanmış denge (dokunma). Artırırsan top
+## hava direncine ve vuruş kuvvetine karşı daha "ağır/dirençli" davranır (ikisi
+## de kütleye bölünür); yerçekimi ivmesi kütleden ETKİLENMEZ (gerçek fizik —
+## Galileo). Gerçek bir top kütlesi (0.43 kg) DEĞİL, çarpan; drag_k zaten
+## fiziksel türetimde kütleyi hesaba katıyor (bkz. tools/physics_probe.gd).
+@export_range(0.2, 3.0, 0.05, "suffix:×") var mass_kg: float = 1.0
 
 @export_group("Atış (deneysel kontrol — sabit)")
 @export_range(5.0, 60.0, 0.5, "suffix:m/s") var v0: float = 30.0
@@ -46,3 +52,38 @@ extends Resource
 
 @export_group("Oynatma")
 @export_range(0.05, 2.0, 0.01) var time_scale: float = 0.42   ## sahnenin oynatma hızı (1.0 = gerçek zaman)
+
+@export_group("Vektör Okları")
+@export_range(1.0, 30.0, 0.1, "suffix:px per m/s²") var arrow_scale: float = 7.2   ## okların uzunluk ölçeği
+@export_range(20.0, 400.0, 5.0, "suffix:px") var arrow_max_px: float = 150.0       ## ok en fazla bu kadar uzayabilir
+@export_range(0.3, 3.0, 0.05, "suffix:×") var arrow_head_ratio: float = 1.0        ## ok ucu / gövde oranı
+@export var gravity_arrow_color: Color = Color("2563eb")
+@export_range(1.0, 20.0, 0.5, "suffix:px") var gravity_arrow_thickness: float = 6.0
+@export var air_arrow_color: Color = Color("0891b2")
+@export_range(1.0, 20.0, 0.5, "suffix:px") var air_arrow_thickness: float = 6.0
+@export var kick_arrow_color: Color = Color("dc2626")
+@export_range(1.0, 20.0, 0.5, "suffix:px") var kick_arrow_thickness: float = 6.0
+
+@export_group("Yörünge Çizgileri")
+@export var predicted_path_color: Color = Color("22c55e")     ## öğrencinin tahmini (düz çizgi)
+@export_range(1.0, 12.0, 0.5, "suffix:px") var predicted_path_thickness: float = 3.0
+@export var real_path_color: Color = Color("e2e8f0")          ## GERÇEK yörünge (nokta nokta)
+@export_range(1.0, 8.0, 0.2, "suffix:px") var real_path_dot_radius: float = 2.6
+@export_range(3.0, 40.0, 1.0, "suffix:px") var real_path_dot_gap: float = 9.0     ## noktalar arası boşluk
+
+@export_group("Kamera")
+@export_range(0.5, 3.0, 0.05, "suffix:×") var camera_start_zoom: float = 1.55  ## uçuş başındaki yakınlık
+@export_range(0.05, 1.0, 0.01, "suffix:×") var camera_min_zoom: float = 0.16   ## en uzak (top ekrandan taşmasın)
+@export_range(0.2, 2.0, 0.05, "suffix:×") var camera_max_zoom: float = 1.0     ## en yakın
+@export_range(0.0, 30.0, 0.5, "suffix:m") var camera_margin_m: float = 6.0     ## top kenara bu kadar yaklaşınca kamera uzaklaşmaya başlar
+
+@export_group("Gökyüzü")
+@export_range(0, 15, 1) var cloud_count: int = 4               ## arka planda kaç bulut olsun (0 = kapalı)
+@export_range(0.0, 60.0, 1.0, "suffix:px/sn") var cloud_speed: float = 8.0   ## bulutların kayma hızı
+
+@export_group("Ses")
+@export var kick_sfx: AudioStream = preload("res://assets/audio/kick.mp3")   ## vuruş sesi (küçük top sıçraması anında çalar)
+@export var wind_sfx: AudioStream   ## rüzgar sesi — top "uzayda" DEĞİLKEN, uçuş boyunca çalar (loop'lu bir dosya seç; henüz atanmadı, boşsa çalmaz)
+
+@export_group("Zamanlama")
+@export_range(0.0, 2.0, 0.02, "suffix:sn") var question_delay_s: float = 0.22   ## ayak topa değdikten kaç sn sonra "Top havada" sorusu çıksın

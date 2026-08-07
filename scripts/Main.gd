@@ -63,6 +63,7 @@ var sim_paused := false
 var decision_started := 0.0   # soru gösterildiği an (karar süresi ölçümü)
 var sfx_kick: AudioStreamPlayer
 var sfx_goal: AudioStreamPlayer
+var sfx_wind: AudioStreamPlayer
 var save_dialog: FileDialog
 var events_dialog: FileDialog
 @onready var Tele: Node = get_node("/root/Telemetry")
@@ -181,8 +182,8 @@ func _build_hud() -> void:
 	v.add_child(hud_choice)
 	v.add_child(_spacer(6))
 	v.add_child(_label("YÖRÜNGELER", 11, Color(ACCENT, 0.85)))
-	v.add_child(_label("—  senin tahminin", 12, Color("6ee7a8")))
-	v.add_child(_label("···  gerçek yol (hayalet)", 12, Color("cbd5e1")))
+	v.add_child(_label("—  senin tahminin", 12, Physics.cfg.predicted_path_color))
+	v.add_child(_label("···  gerçek yol (hayalet)", 12, Physics.cfg.real_path_color))
 	v.add_child(_spacer(8))
 	v.add_child(_label("TOPUN HIZI", 11, TXT_MUTED))
 	hud_speed = _label("0.0 m/s", 30, ACCENT)
@@ -224,6 +225,11 @@ func _build_kick_panel() -> void:
 	q_intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	q_intro.custom_minimum_size.x = 480
 	v.add_child(q_intro)
+	v.add_child(_spacer(2))
+	var question_lbl := _label(S.t("KICK_PANEL_QUESTION"), 17, TXT)
+	question_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	question_lbl.custom_minimum_size.x = 480
+	v.add_child(question_lbl)
 	q_hint = _label("SENİN SEÇİMİN", 11, Color(ACCENT, 0.9))
 	q_hint.visible = false
 	v.add_child(q_hint)
@@ -468,6 +474,7 @@ func _on_reset_sim() -> void:
 	field.set_paused(false)
 	btn_pause.text = "⏸  Durdur"
 	result_center.visible = false
+	_stop_wind()
 	field.reset()
 	_reset_hud_values()
 	Tele.decision_start(attempt + 1)
@@ -484,6 +491,7 @@ func _build_field() -> void:
 	field.pre_kick.connect(_on_pre_kick)
 	field.target_hit.connect(_on_goal_scored)
 	field.speed_report.connect(_on_speed_report)   # HUD'daki hız değerlerini besler
+	field.altitude_report.connect(_on_altitude_report)   # rüzgar sesini yönetir
 	add_child(field)
 	_build_audio()
 	move_child(field, 0)
@@ -648,6 +656,7 @@ func _toast(msg: String) -> void:
 
 func _show_entry() -> void:
 	Tele.end_session()
+	_stop_wind()
 	hud_card.visible = false
 	result_center.visible = false
 	top_bar.visible = false
@@ -723,14 +732,17 @@ func _on_intro_done() -> void:
 
 func _build_audio() -> void:
 	sfx_kick = AudioStreamPlayer.new()
-	if ResourceLoader.exists("res://assets/audio/kick.mp3"):
-		sfx_kick.stream = load("res://assets/audio/kick.mp3")
+	sfx_kick.stream = Physics.cfg.kick_sfx   # Inspector: sim_config.tres -> Ses -> Kick Sfx
 	add_child(sfx_kick)
 	sfx_goal = AudioStreamPlayer.new()
 	if ResourceLoader.exists("res://assets/audio/applause.mp3"):
 		sfx_goal.stream = load("res://assets/audio/applause.mp3")
 	sfx_goal.volume_db = -3.0
 	add_child(sfx_goal)
+	sfx_wind = AudioStreamPlayer.new()
+	sfx_wind.stream = Physics.cfg.wind_sfx   # Inspector: sim_config.tres -> Ses -> Wind Sfx (boşsa çalmaz)
+	sfx_wind.volume_db = -6.0
+	add_child(sfx_wind)
 
 func _on_goal_scored() -> void:
 	if sfx_goal and sfx_goal.stream:
@@ -741,6 +753,21 @@ func _on_goal_scored() -> void:
 func _on_pre_kick() -> void:
 	if sfx_kick and sfx_kick.stream:
 		sfx_kick.play()
+
+## Rüzgar sesi: top "uzayda" DEĞİLKEN (in_space=false) uçuş boyunca çalar.
+## sim_config.tres -> Ses -> Wind Sfx boşsa hiçbir şey yapmaz.
+func _on_altitude_report(_alt_m: float, in_space: bool) -> void:
+	if sfx_wind == null or sfx_wind.stream == null:
+		return
+	if in_space:
+		if sfx_wind.playing:
+			sfx_wind.stop()
+	elif not sfx_wind.playing:
+		sfx_wind.play()
+
+func _stop_wind() -> void:
+	if sfx_wind and sfx_wind.playing:
+		sfx_wind.stop()
 
 func _update_preview() -> void:
 	_update_choice_summary()
@@ -816,6 +843,7 @@ func _on_run() -> void:
 	field.start_flight(pred, real)
 
 func _on_flight_finished() -> void:
+	_stop_wind()
 	var gol := field.hit_bulls
 	result_badge_lbl.text = S.t("BADGE_GOAL") if gol else S.t("BADGE_MISS")
 	result_badge_lbl.add_theme_color_override("font_color", ACCENT if gol else DANGER)
@@ -855,6 +883,7 @@ func _on_replay() -> void:
 func _on_change_answer() -> void:
 	Tele.answer_change()
 	result_center.visible = false
+	_stop_wind()
 	field.reset()
 	_reset_hud_values()
 	Tele.decision_start(attempt + 1)

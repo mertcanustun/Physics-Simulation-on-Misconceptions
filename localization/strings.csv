@@ -10,6 +10,7 @@ KICK_PANEL_TITLE,"Top havada  🏃 ➡ ⚽"
 KICK_PANEL_INTRO,"Az önce bir futbol oyuncusu topa vurdu; top şu anda havada.
 
 YAPMAN GEREKEN: Topa etki ettiğini düşündüğün kuvvetlerin HEPSİNİ işaretle, sonra aşağıdaki yeşil düğmeye bas. Top senin seçimine göre uçacak; kesikli çizgi ve soluk top ise gerçekte olanı gösterecek. Doğru seçersen top kaledeki hedefe düşer."
+KICK_PANEL_QUESTION,"Topa hangi kuvvetler etki ediyor?"
 KICK_PANEL_RUN_BTN,"Ne olacağını gör"
 FORCE_GRAVITY_TITLE,"Yerçekiminden kaynaklanan aşağı yönlü kuvvet"
 FORCE_GRAVITY_SUB,""

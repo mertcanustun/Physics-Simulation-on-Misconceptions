@@ -469,3 +469,59 @@ kırılgan.
 **Yeni bir parametre/metin eklemek istersen:** `SimConfig.gd`'ye bir
 `@export` satırı veya `strings.csv`'ye bir satır eklemen, sonra ilgili
 scriptte `cfg.<alan>` / `S.t("ANAHTAR")` ile okuman yeterli.
+
+---
+# Güncelleme — Inspector'a taşınan tam liste + ADIM ADIM kullanım rehberi
+
+## Yeni eklenenler (`config/sim_config.tres`)
+- **Kütle çarpanı** (`mass_kg`, varsayılan 1.0): hava direnci ve vuruş
+  kuvvetinin ivmesini böler (F=ma); yerçekimi kütleden ETKİLENMEZ (gerçek
+  fizik). 1.0 = mevcut ayarlanmış denge, dokunmazsan hiçbir şey değişmez.
+- **Vektör okları:** her kuvvet oku (yerçekimi/hava/vuruş) için ayrı renk +
+  kalınlık, ok ölçeği, ok en fazla uzunluğu, ok ucu/gövde oranı.
+- **Yörünge çizgileri:** tahmin (düz) ve gerçek (noktalı) yörüngenin rengi,
+  kalınlığı, gerçek yörüngedeki nokta aralığı/boyutu. Sol HUD kartındaki
+  lejant ("senin tahminin" / "gerçek yol") artık BURADAKİ renkleri kullanıyor
+  — biri değişince öbürü de otomatik eşleşir.
+- **Kamera:** başlangıç yakınlığı, en yakın/en uzak zoom, kenar payı (top
+  ekran kenarına ne kadar yaklaşınca kamera uzaklaşmaya başlasın).
+- **Gökyüzü:** bulut sayısı (0 = kapalı) ve kayma hızı — basit prosedürel
+  bulutlar, top "uzaya" yaklaştıkça (mevcut yıldız/gezegen geçişiyle birlikte)
+  solup kayboluyor.
+- **Ses:** Kick Sfx (vuruş sesi — Inspector'dan sürükle-bırak, artık sabit
+  dosya yolu değil) ve **Wind Sfx (YENİ)** — top "uzayda" değilken uçuş
+  boyunca çalar, uzaya geçince durur. Wind Sfx boş bırakılırsa hiçbir şey
+  çalmaz (henüz bir rüzgar sesi dosyası eklenmedi — bir tane bulup buraya
+  sürüklemeniz yeterli).
+- **Soru gecikmesi** (`question_delay_s`): ayak topa değdikten kaç saniye
+  sonra "Top havada" sorusu çıksın (küçük top sıçraması ile senkron).
+
+## Yeni metin (`localization/strings.csv`)
+- `KICK_PANEL_QUESTION`: soru panelinde açıklama paragrafının altında kalın
+  bir başlık olarak çıkan "Topa hangi kuvvetler etki ediyor?" sorusu.
+
+## ADIM ADIM — teknik olmayan bir arkadaş bunu nasıl yapar
+1. Godot'u indirin (godotengine.org, sürüm **4.5.x**) ve açın; Proje
+   Yöneticisi'nde "Import" ile bu repodaki `project.godot` dosyasını seçin
+   (daha önce açtıysanız listede zaten görünür, üstüne tıklayıp "Edit").
+2. Editör açılınca sol altta **FileSystem** panelini bulun.
+3. **Sayı/renk/ses değiştirmek için:** `config/` klasörünü açın,
+   `sim_config.tres`'e **TEK** tıklayın (çift tık değil). Sağda **Inspector**
+   panelinde kategoriler (Kuvvetler, Vektör Okları, Yörünge Çizgileri,
+   Kamera, Gökyüzü, Ses, Zamanlama...) açılır-kapanır gruplar halinde
+   listelenir.
+   - Sayı alanları: üstüne tıklayıp yazın ya da sürükleyin.
+   - Renk alanları: renkli kutuya tıklayınca seçici açılır.
+   - Ses alanları (Kick Sfx/Wind Sfx): sağdaki küçük ok ▾ → "Load" ile
+     `assets/audio/` altından (veya başka bir yerden) bir ses dosyası seçin.
+   - Bir değeri eskiye döndürmek isterseniz alanın solundaki küçük ↺ okuna
+     tıklayın (Godot değiştirilmiş alanları böyle işaretler).
+4. **Metin değiştirmek için:** `localization/strings.csv`'yi Godot'ta DEĞİL,
+   Excel/Google Sheets/Numbers gibi bir programda açın. Sadece **"text"**
+   sütununu değiştirin, **"key"** sütununa dokunmayın. "CSV UTF-8" formatında
+   kaydedin (Türkçe karakterler bozulmasın diye).
+5. Üstteki ▶ (oynat) düğmesine basıp (veya F5) deneyin.
+6. Beğendiyseniz **Ctrl+S** ile kaydedin (sim_config.tres'i Inspector'dan
+   değiştirdiyseniz sekmede küçük bir "değişti" işareti görürsünüz).
+7. Git ile commit/push edin (yalnızca `config/sim_config.tres` ve/veya
+   `localization/strings.csv` değişmiş olacak — kod dosyalarına dokunmadınız).

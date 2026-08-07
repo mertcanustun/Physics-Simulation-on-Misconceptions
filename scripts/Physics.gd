@@ -34,11 +34,11 @@ static func simulate(gravity: bool, kick: bool, air: bool,
 	while t < cfg.max_t:
 		var acc := Vector2.ZERO
 		if gravity:
-			acc.y -= cfg.gravity_g
+			acc.y -= cfg.gravity_g   # kütleden ETKİLENMEZ — gerçek fizik (Galileo)
 		if air:
-			acc -= drag_k * vel.length() * vel
+			acc -= (drag_k * vel.length() * vel) / cfg.mass_kg
 		if kick and vel.length() > 0.01:
-			acc += vel.normalized() * imp
+			acc += (vel.normalized() * imp) / cfg.mass_kg
 		if rolling:
 			# yerde yuvarlanma: hareket yönünün tersine sabit sürtünme
 			if absf(vel.x) > 0.01:
