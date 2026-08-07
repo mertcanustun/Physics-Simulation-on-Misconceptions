@@ -144,7 +144,9 @@ func option_toggle(factor: String, checked: bool) -> void:
 	if _active():
 		_write("option_toggle", {"factor": factor, "checked": checked, "order": _toggle_count, "since_decision_ms": _since_ms()})
 
-## Bir parametre değişti (ör. sürtünme Az/Orta/Fazla) — Main._set_friction.
+## Bir parametre değişti — genel amaçlı, şu an aktif bir çağıran yok
+## (sürtünme seviyesi seçimi 2026-08-07'de kaldırıldı); ileride yeniden
+## seçilebilir bir parametre eklenirse kullanılabilir.
 func param_change(pname: String, value) -> void:
 	if not _deciding:
 		return
@@ -153,9 +155,9 @@ func param_change(pname: String, value) -> void:
 		_write("param_change", {"name": pname, "value": value, "since_decision_ms": _since_ms()})
 
 ## "Ne olacağını gör / Vuruşu başlat" — cevap gönderildi (Main._on_run).
-func answer_submit(gravity: bool, kick: bool, air: bool, friction: String, correct: bool, category: String) -> void:
+func answer_submit(gravity: bool, kick: bool, air: bool, correct: bool, category: String) -> void:
 	var d := {
-		"gravity": gravity, "kick": kick, "air": air, "friction": friction,
+		"gravity": gravity, "kick": kick, "air": air,
 		"correct": correct, "category": category,
 		"decision_ms": _since_ms(), "toggle_count": _toggle_count,
 	}

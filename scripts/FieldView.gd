@@ -15,10 +15,11 @@ const RIGHT_MARGIN := 40.0
 const DEFAULT_SPAN_M := 70.0 # zoom=1'de görünen yatay mesafe (m)
 
 # --- KALE (geri getirildi) ---
-const GOAL_X := 49.0          # kale ön çizgisi (m); doğru cevap ~52 m'ye düşer -> GOL
+const GOAL_X := 34.0          # kale ön çizgisi (m); doğru cevap ~37 m'ye düşer -> GOL
+                               # (2026-08-07: DRAG_K=0.025'e göre yeniden konumlandırıldı)
 const GOAL_DEPTH_PX := 42.0
 const RING_BULLS := 3.5       # "isabet" toleransı (m) — kale genişliği yerine kullanılır
-var target_x := 52.0          # doğru fiziğin indiği nokta (kale içi)
+var target_x := 37.0          # doğru fiziğin indiği nokta (kale içi)
 
 # --- SABİT oynatma hızı: 1x bazı kareleri atladığı için yavaşlatıldı ---
 var time_scale := 0.42   # SABİT optimum oynatma hızı (her ok rahat izlenir)

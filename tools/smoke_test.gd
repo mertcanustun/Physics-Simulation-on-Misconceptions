@@ -38,7 +38,6 @@ func _init() -> void:
 	main.cb_gravity.button_pressed = true
 	main.cb_kick.button_pressed = false
 	main.cb_air.button_pressed = true
-	main.friction_level = 2          # "Fazla"
 	main.kick_force = 13.0
 	main.v0 = 28.0
 	main.angle = 40.0
@@ -61,7 +60,6 @@ func _init() -> void:
 			"gravity": "true",
 			"kick_force_sel": "false",
 			"air_resistance": "true",
-			"friction_level": "Fazla",
 			"kick_force_mag": "13.0",
 			"v0_mps": "28.0",
 			"angle_deg": "40.0",
@@ -74,7 +72,7 @@ func _init() -> void:
 			elif got[k] != expect[k]:
 				print("FAIL: %s = '%s' (beklenen '%s')" % [k, got[k], expect[k]]); fails += 1
 		if fails == 0:
-			print("OK  : tüm seçimler doğru kaydedildi (kuvvetler, sürtünme, F, hız, açı)")
+			print("OK  : tüm seçimler doğru kaydedildi (kuvvetler, F, hız, açı)")
 		# kategori ve iniş mesafesi de yazılıyor mu
 		if got.get("category", "") == "":
 			print("FAIL: yanılgı kategorisi boş"); fails += 1
@@ -93,7 +91,7 @@ func _init() -> void:
 	main._on_run()
 	var l2 := DataLog.read_all().strip_edges().split("\n")
 	var r2: PackedStringArray = l2[l2.size() - 1].split(",")
-	if r2[14] != "false":
+	if r2[13] != "false":   # sütun 13 = "correct" (friction_level kaldırıldıktan sonraki şema)
 		print("FAIL: yanılgılı cevap 'doğru' işaretlendi"); fails += 1
 	else:
 		print("OK  : yanılgılı cevap correct=false olarak kaydedildi")
@@ -132,7 +130,6 @@ func _init() -> void:
 	main._on_intro_done()
 	main.cb_air.button_pressed = true
 	main.cb_air.toggled.emit(true)
-	main._set_friction(2)
 	main._on_run()
 	var tele_txt: String = tele.read_all()
 	var types := {}
@@ -143,7 +140,7 @@ func _init() -> void:
 		if d is Dictionary:
 			types[d.get("type", "?")] = int(types.get(d.get("type", "?"), 0)) + 1
 	print("OLAY TÜRLERİ: ", types)
-	for must in ["session_begin", "decision_start", "option_toggle", "param_change", "answer_submit"]:
+	for must in ["session_begin", "decision_start", "option_toggle", "answer_submit"]:
 		if not types.has(must):
 			print("FAIL: '%s' olayı kaydedilmedi" % must); fails += 1
 	if fails == 0:

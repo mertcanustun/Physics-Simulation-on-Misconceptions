@@ -17,7 +17,6 @@ var attempt := 0
 var official := false
 var v0 := Physics.FIXED_V0     # SABİT — kullanıcı değiştiremez
 var angle := Physics.FIXED_ANGLE  # SABİT
-var friction_level := 1   # 0=Az, 1=Orta, 2=Fazla (Orta = doğru senaryo)
 var kick_force := Physics.IMPETUS_ACC   # SABİT (yanılgı kuvvetinin büyüklüğü)
 
 var field: FieldView
@@ -32,12 +31,11 @@ var btn_activate: Button
 var btn_stop: Button
 var kick_panel: PanelContainer
 var kick_center: CenterContainer
+var intro_modal_center: CenterContainer
 var q_intro: Label
 var q_hint: Label
 var q_run_btn: Button
 var top_bar: PanelContainer
-var howto_card: PanelContainer
-var howto_body: Label
 var hud_card: PanelContainer
 var hud_speed: Label
 var hud_choice: Label
@@ -56,8 +54,6 @@ var cb_gravity: CheckBox
 var cb_kick: CheckBox
 var cb_air: CheckBox
 var kick_box: VBoxContainer
-var friction_box: HBoxContainer
-var friction_btns: Array = []
 var control_bar: PanelContainer
 var btn_replay: Button
 var btn_change: Button
@@ -77,7 +73,7 @@ func _ready() -> void:
 	_build_entry_panel()
 	_build_admin_panel()
 	_build_kick_panel()
-	_build_howto_card()
+	_build_intro_modal()
 	_build_hud()
 	_build_result_modal()
 	_build_control_bar()
@@ -168,36 +164,6 @@ func _build_header() -> void:
 	header_sub = _label("", 13, TXT_MUTED)
 	h.add_child(header_sub)
 
-## ------------------- "NASIL ÇALIŞIR?" kartı (sol üst) -------------------
-func _build_howto_card() -> void:
-	howto_card = PanelContainer.new()
-	howto_card.add_theme_stylebox_override("panel", _card_style(14))
-	howto_card.position = Vector2(24, 78)
-	howto_card.custom_minimum_size = Vector2(300, 0)
-	add_child(howto_card)
-	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 8)
-	howto_card.add_child(v)
-	var head := HBoxContainer.new()
-	v.add_child(head)
-	head.add_child(_label("ℹ  Nasıl çalışır?", 14, TXT))
-	var sp := Control.new()
-	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(sp)
-	var tog := Button.new()
-	tog.text = "▾"
-	tog.flat = true
-	tog.custom_minimum_size = Vector2(26, 22)
-	tog.add_theme_color_override("font_color", TXT_MUTED)
-	head.add_child(tog)
-	howto_body = _label("Oyuncu topa vuruyor. Top havadayken karşına bir soru çıkacak: topa hangi kuvvetler etki ediyor? İşaretle, sonra topun kaleye gidip gitmediğini izle. Vuruş gücü ve açısı sabittir — sonucu yalnızca senin kuvvet seçimin belirler.", 12, TXT_MUTED)
-	howto_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	howto_body.custom_minimum_size.x = 264
-	v.add_child(howto_body)
-	tog.pressed.connect(func():
-		howto_body.visible = not howto_body.visible
-		tog.text = "▾" if howto_body.visible else "▸")
-
 ## ------------------- SOL HUD: yörünge açıklaması + HIZ -------------------
 func _build_hud() -> void:
 	hud_card = PanelContainer.new()
@@ -267,24 +233,6 @@ func _build_kick_panel() -> void:
 	kick_box.visible = false
 	v.add_child(kick_box)
 	cb_air = _force_box(v, "Hava direnci", "topu yavaşlatır")
-	friction_box = HBoxContainer.new()
-	friction_box.add_theme_constant_override("separation", 8)
-	friction_box.visible = false
-	v.add_child(friction_box)
-	friction_btns.clear()
-	var names := ["Az", "Orta", "Fazla"]
-	for i in range(3):
-		var b := Button.new()
-		b.text = names[i]
-		b.toggle_mode = true
-		b.button_pressed = (i == friction_level)
-		b.custom_minimum_size = Vector2(84, 34)
-		_style_button(b, CARD2 if i != friction_level else ACCENT_DK, TXT)
-		var idx := i
-		b.pressed.connect(func(): _set_friction(idx))
-		friction_btns.append(b)
-		friction_box.add_child(b)
-	cb_air.toggled.connect(func(on): friction_box.visible = on; _update_preview())
 	v.add_child(_spacer(8))
 	q_run_btn = Button.new()
 	q_run_btn.text = "Ne olacağını gör"
@@ -292,6 +240,42 @@ func _build_kick_panel() -> void:
 	_style_button(q_run_btn, ACCENT_DK, Color.WHITE)
 	q_run_btn.pressed.connect(_on_run)
 	v.add_child(q_run_btn)
+
+## ------------------- "NASIL ÇALIŞIR?" GİRİŞ POPUP'I (simülasyon başlamadan önce) -------------------
+## Futbolcu koşup gelmeden, hatta saha görünür olmadan HEMEN önce çıkar; "Devam
+## Et"e basılınca koşu-vuruş girişi (field.start_intro) başlar.
+func _build_intro_modal() -> void:
+	intro_modal_center = CenterContainer.new()
+	intro_modal_center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	intro_modal_center.visible = false
+	add_child(intro_modal_center)
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", _card_style(18))
+	panel.custom_minimum_size = Vector2(520, 0)
+	intro_modal_center.add_child(panel)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 14)
+	panel.add_child(v)
+	v.add_child(_label("ℹ  Nasıl çalışır?", 22, TXT))
+	var body := _label(
+		"Birazdan başlayacak olan simülasyonda, bir futbolcunun topa vuruş anını izleyeceksiniz. Vuruş gerçekleştikten hemen sonra simülasyon duraklatılacak ve karşınıza şu soru çıkacaktır: \"Topa hangi kuvvetler etki etmektedir?\" Lütfen topa etki ettiğini düşündüğünüz kuvvetleri işaretleyiniz. Ardından, yaptığınız kuvvet seçimlerinin topun hareketini nasıl etkilediğini ekranda gözlemleyiniz.\n\nSimülasyon esnasında meydana gelen hız değişimlerini ve oluşan yörüngelerin (path) hangileri olduğunu soldaki panelden takip edebilirsiniz. Ayrıca, simülasyonu çalıştırdıktan sonra daha detaylı bir inceleme yapmak isterseniz alt kısımdaki kontrolleri kullanarak simülasyonu dilediğiniz yerde durdurabilir, tekrar oynatabilir veya sistemi sıfırlayarak soru ekranına geri dönebilirsiniz.\n\nBaşlamak için hazır olduğunuzda \"Devam Et\" butonuna tıklayınız.",
+		14, TXT_MUTED)
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.custom_minimum_size.x = 480
+	v.add_child(body)
+	v.add_child(_spacer(4))
+	var btn := Button.new()
+	btn.text = "Devam Et"
+	btn.custom_minimum_size = Vector2(480, 46)
+	_style_button(btn, ACCENT_DK, Color.WHITE)
+	btn.pressed.connect(_on_intro_modal_continue)
+	v.add_child(btn)
+
+func _on_intro_modal_continue() -> void:
+	intro_modal_center.visible = false
+	control_bar.visible = true
+	# önce koşu-vuruş girişi; ayak topa değince (_on_intro_done) soru gösterilir
+	field.start_intro()
 
 func _force_box(parent: VBoxContainer, title: String, sub: String) -> CheckBox:
 	var pc := PanelContainer.new()
@@ -425,7 +409,6 @@ func _center_question() -> void:
 	q_hint.visible = false
 	_set_force_rows_enabled(true)
 	kick_center.visible = true
-	howto_card.visible = true
 	btn_start.visible = true
 	btn_start.disabled = false
 	_update_choice_summary()
@@ -449,7 +432,6 @@ func _hide_question() -> void:
 		kick_panel.get_parent().remove_child(kick_panel)
 		kick_center.add_child(kick_panel)
 	kick_panel.custom_minimum_size = Vector2(520, 0)
-	howto_card.visible = true
 	btn_start.visible = true
 	btn_start.disabled = true          # uçuş sırasında atış yapılamaz
 	_update_choice_summary()
@@ -463,16 +445,13 @@ func _update_choice_summary() -> void:
 	if cb_kick.button_pressed:
 		parts.append("Vuruş kuvveti F")
 	if cb_air.button_pressed:
-		parts.append("Hava direnci (%s)" % ["Az", "Orta", "Fazla"][friction_level])
+		parts.append("Hava direnci")
 	hud_choice.text = "Seçimin: " + (", ".join(parts) if parts.size() > 0 else "hiçbir kuvvet")
 
 func _set_force_rows_enabled(on: bool) -> void:
 	for cb in [cb_gravity, cb_kick, cb_air]:
 		if cb:
 			cb.disabled = not on
-	for b in friction_btns:
-		b.disabled = not on
-	friction_box.visible = cb_air.button_pressed if on else (cb_air.button_pressed)
 
 func _on_pause_toggle() -> void:
 	sim_paused = not sim_paused
@@ -663,13 +642,13 @@ func _toast(msg: String) -> void:
 
 func _show_entry() -> void:
 	Tele.end_session()
-	howto_card.visible = false
 	hud_card.visible = false
 	result_center.visible = false
 	top_bar.visible = false
 	entry_center.visible = true
 	admin_center.visible = false
 	kick_center.visible = false
+	intro_modal_center.visible = false
 	control_bar.visible = false
 	field.visible = false
 	code_edit.text = ""
@@ -715,13 +694,15 @@ func _on_continue() -> void:
 	entry_center.visible = false
 	field.visible = true
 	btn_start.disabled = true      # giriş animasyonu bitmeden atış yok
-	howto_card.visible = true
 	hud_card.visible = true
 	top_bar.visible = true
 	kick_center.visible = false
-	control_bar.visible = true
-	# önce koşu-vuruş girişi; ayak topa değince (_on_intro_done) soru gösterilir
-	field.start_intro()
+	control_bar.visible = false
+	field.reset()   # önceki oturumdan kalan playing/finished bayraklarını temizle
+	# saha görünür ama HENÜZ HİÇBİR ŞEY OYNAMIYOR: önce "nasıl çalışır" popup'ı
+	# çıkar (alt kontrol çubuğu da onunla birlikte gelir), "Devam Et"e basılınca
+	# koşu-vuruş girişi (field.start_intro) başlar
+	intro_modal_center.visible = true
 
 func _on_intro_done() -> void:
 	btn_start.disabled = false
@@ -733,13 +714,6 @@ func _on_intro_done() -> void:
 	_update_preview()
 
 # ------------------------------------------------------------ kuvvet önizleme
-
-func _set_friction(idx: int) -> void:
-	Tele.param_change("friction", ["Az", "Orta", "Fazla"][idx])
-	friction_level = idx
-	for i in range(friction_btns.size()):
-		friction_btns[i].button_pressed = (i == idx)
-	_update_preview()
 
 func _build_audio() -> void:
 	sfx_kick = AudioStreamPlayer.new()
@@ -762,7 +736,7 @@ func _update_preview() -> void:
 	if kick_panel == null or not kick_center.visible:
 		return
 	field.set_preview(cb_gravity.button_pressed, cb_kick.button_pressed,
-		cb_air.button_pressed, Physics.drag_for_level(friction_level), kick_force)
+		cb_air.button_pressed, Physics.DRAG_K, kick_force)
 
 # ------------------------------------------------------------ admin actions
 
@@ -803,7 +777,7 @@ func _on_run() -> void:
 	var g := cb_gravity.button_pressed
 	var k := cb_kick.button_pressed
 	var a := cb_air.button_pressed
-	var dk := Physics.drag_for_level(friction_level)
+	var dk := Physics.DRAG_K
 	var tx := field.target_x
 	var pred := Physics.simulate(g, k, a, dk, kick_force, tx, FieldView.RING_BULLS)
 	var real := Physics.real_path(tx, FieldView.RING_BULLS)
@@ -815,10 +789,10 @@ func _on_run() -> void:
 	# yalnızca yönetici bu kod için veri toplamayı açtıysa kaydet
 	official = Session.is_active(participant_code)
 	Tele.set_official(official)
-	Tele.answer_submit(g, k, a, ["Az", "Orta", "Fazla"][friction_level], correct, category)
+	Tele.answer_submit(g, k, a, correct, category)
 	if official:
 		DataLog.log_attempt(participant_code, group, Codes.has_seen_topic(participant_code),
-			"official", attempt, g, k, a, friction_level, kick_force, v0, angle,
+			"official", attempt, g, k, a, kick_force, v0, angle,
 			correct, category, is_goal, landing_x, decision_s)
 		Session.count_attempt(participant_code)
 	_hide_question()
@@ -860,7 +834,7 @@ func _on_flight_finished() -> void:
 func _on_replay() -> void:
 	Tele.replay()
 	result_center.visible = false
-	var dk := Physics.drag_for_level(friction_level)
+	var dk := Physics.DRAG_K
 	var tx := field.target_x
 	field.start_flight(
 		Physics.simulate(cb_gravity.button_pressed, cb_kick.button_pressed,

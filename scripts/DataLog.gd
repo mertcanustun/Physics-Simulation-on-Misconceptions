@@ -5,14 +5,13 @@ class_name DataLog
 ##
 ## KAYDEDİLEN ALANLAR (kullanıcının yaptığı TÜM seçimler dahil):
 ##   kuvvet seçimleri (yerçekimi / vuruş kuvveti / hava direnci),
-##   sürtünme seviyesi (Az/Orta/Fazla), vuruş kuvveti F büyüklüğü,
-##   vuruş hızı ve açısı, sonucun doğruluğu, gol olup olmadığı, iniş mesafesi,
-##   yanılgı kategorisi ve denemenin ne kadar sürdüğü.
+##   vuruş kuvveti F büyüklüğü, vuruş hızı ve açısı, sonucun doğruluğu,
+##   gol olup olmadığı, iniş mesafesi, yanılgı kategorisi ve denemenin ne
+##   kadar sürdüğü. (2026-08-07: hava direnci artık tek sabit — Az/Orta/Fazla
+##   seviyesi kaldırıldığı için "friction_level" sütunu da kaldırıldı.)
 
 const PATH := "user://session_log.csv"
-const HEADER := "timestamp_utc,session_id,participant_code,group,seen_topic,session_mode,attempt,gravity,kick_force_sel,air_resistance,friction_level,kick_force_mag,v0_mps,angle_deg,correct,category,goal,landing_x_m,decision_seconds\n"
-
-const FRICTION_NAMES := ["Az", "Orta", "Fazla"]
+const HEADER := "timestamp_utc,session_id,participant_code,group,seen_topic,session_mode,attempt,gravity,kick_force_sel,air_resistance,kick_force_mag,v0_mps,angle_deg,correct,category,goal,landing_x_m,decision_seconds\n"
 
 static var session_id := ""
 
@@ -28,7 +27,7 @@ static func _csv(v: String) -> String:
 	return v
 
 static func log_attempt(code: String, group: String, seen: bool, mode: String, attempt: int,
-		g: bool, k: bool, a: bool, friction_level: int, kick_mag: float,
+		g: bool, k: bool, a: bool, kick_mag: float,
 		v0: float, ang: float, correct: bool, category: String,
 		goal: bool, landing_x: float, decision_s: float) -> void:
 	var exists := FileAccess.file_exists(PATH)
@@ -40,11 +39,10 @@ static func log_attempt(code: String, group: String, seen: bool, mode: String, a
 		f.seek_end()
 	else:
 		f.store_string(HEADER)
-	var fr: String = FRICTION_NAMES[clampi(friction_level, 0, 2)]
-	var row := "%s,%s,%s,%s,%s,%s,%d,%s,%s,%s,%s,%.1f,%.1f,%.1f,%s,%s,%s,%.2f,%.1f\n" % [
+	var row := "%s,%s,%s,%s,%s,%s,%d,%s,%s,%s,%.1f,%.1f,%.1f,%s,%s,%s,%.2f,%.1f\n" % [
 		Time.get_datetime_string_from_system(true), _sid(), _csv(code), _csv(group),
 		str(seen), mode, attempt,
-		str(g), str(k), str(a), fr, kick_mag, v0, ang,
+		str(g), str(k), str(a), kick_mag, v0, ang,
 		str(correct), _csv(category), str(goal), landing_x, decision_s]
 	f.store_string(row)
 	f.close()
@@ -81,9 +79,9 @@ static func tail(n := 3) -> String:
 	var start := maxi(1, lines.size() - n)
 	for i in range(start, lines.size()):
 		var c: PackedStringArray = String(lines[i]).split(",")
-		if c.size() >= 17:
-			out.append("· %s | deneme %s | Y:%s F:%s H:%s (%s) | doğru:%s gol:%s" % [
-				c[2], c[6], c[7], c[8], c[9], c[10], c[14], c[16]])
+		if c.size() >= 16:
+			out.append("· %s | deneme %s | Y:%s F:%s H:%s | doğru:%s gol:%s" % [
+				c[2], c[6], c[7], c[8], c[9], c[13], c[15]])
 	return "\n".join(out) if out.size() > 0 else "(okunamadı)"
 
 static func export_to(dest: String) -> bool:

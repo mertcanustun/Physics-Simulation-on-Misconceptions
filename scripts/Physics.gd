@@ -7,10 +7,9 @@ class_name Physics
 ##   rest_x   : top nerede durdu (sekmeler bitince)
 
 const G := 9.81
-# Hava direnci (sürtünme) seviyeleri — kuadratik direnç katsayısı.
-const DRAG_LOW := 0.006     # "Az"
-const DRAG_MED := 0.012     # "Orta"  <- GERÇEK değer (doğru senaryo)
-const DRAG_HIGH := 0.022    # "Fazla"
+# Hava direnci — kuadratik direnç katsayısı. Tek sabit (seviye seçimi kaldırıldı,
+# 2026-08-07): "Hava direnci" artık yerçekimi/vuruş kuvveti gibi basit açık/kapalı.
+const DRAG_K := 0.025
 const IMPETUS_ACC := 15.0   # "vuruş kuvveti itmeye devam eder" yanılgısı (m/s^2) — istenirse 30.0
 
 # SABİT ATIŞ — kullanıcı artık hız/açı seçemez (deneysel kontrol).
@@ -29,18 +28,12 @@ const BOUNCE_FRICTION := 0.72  # çarpmada yatay hız kaybı
 const ROLL_FRICTION := 6.5     # yuvarlanma sürtünmesi (m/s^2) — top hedefin yanında durur
 const REST_VY := 1.2           # bu dikey hızın altında artık sekmez
 
-static func drag_for_level(level: int) -> float:
-	match level:
-		0: return DRAG_LOW
-		2: return DRAG_HIGH
-		_: return DRAG_MED
-
 ## Kuvvet seçimine göre yörünge. Sekme ve yuvarlanma dahil; top DURUNCA biter,
 ## böylece "havada asılı kalma" hatası oluşmaz.
 ## stick_x >= 0 ise: top hedef tahtasına düşerse SAPLANIR (dart gibi), sekmez.
 ## Iskalarsa normal sekme/yuvarlanma uygulanır.
 static func simulate(gravity: bool, kick: bool, air: bool,
-		drag_k := DRAG_MED, imp := IMPETUS_ACC,
+		drag_k := DRAG_K, imp := IMPETUS_ACC,
 		stick_x := -1.0, stick_r := 0.0) -> Dictionary:
 	var ang := deg_to_rad(FIXED_ANGLE)
 	var vel := Vector2(cos(ang), sin(ang)) * FIXED_V0
@@ -98,11 +91,8 @@ static func simulate(gravity: bool, kick: bool, air: bool,
 	}
 
 ## GERÇEK yörünge — her zaman doğru fizik (yerçekimi + gerçek hava direnci).
-## DİKKAT: kullanıcının seçtiği sürtünme seviyesinden ETKİLENMEZ; aksi hâlde
-## öğrenci yanlış seviyeyi seçtiğinde "gerçek" yörünge de kayar ve
-## karşılaştırma anlamsızlaşırdı (eski sürümdeki sürtünme hatası buydu).
 static func real_path(stick_x := -1.0, stick_r := 0.0) -> Dictionary:
-	return simulate(true, false, true, DRAG_MED, 0.0, stick_x, stick_r)
+	return simulate(true, false, true, DRAG_K, 0.0, stick_x, stick_r)
 
 ## Hedef tahtasının merkezi = gerçek fiziğin ilk yere değdiği nokta.
 static func target_x() -> float:
