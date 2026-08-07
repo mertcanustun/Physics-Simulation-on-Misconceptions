@@ -4,3 +4,4 @@
 
 [resource]
 script = ExtResource("1")
+impetus_acc = 22.5
