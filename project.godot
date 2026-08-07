@@ -21,6 +21,7 @@ config/features=PackedStringArray("4.5")
 [autoload]
 
 Telemetry="*res://scripts/Telemetry.gd"
+Strings="*res://scripts/Strings.gd"
 
 [display]
 

@@ -11,3 +11,9 @@ export_presets.cfg
 
 # arşivler
 *.zip
+
+# strings.csv, kendi Strings.gd okuyucumuz tarafından okunuyor; Godot yine de
+# onu otomatik "CSV Translation" olarak import edip şu ikisini üretiyor —
+# kullanılmıyorlar, tekrar üretilebilirler, repoyu şişirmesinler.
+localization/*.import
+localization/*.translation

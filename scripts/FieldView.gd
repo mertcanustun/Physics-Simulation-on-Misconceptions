@@ -15,15 +15,11 @@ const ORIGIN_X := 330.0      # vuruş noktası (px, soldan) — sol HUD kartlar�
 const RIGHT_MARGIN := 40.0
 const DEFAULT_SPAN_M := 70.0 # zoom=1'de görünen yatay mesafe (m)
 
-# --- KALE (geri getirildi) ---
-const GOAL_X := 34.0          # kale ön çizgisi (m); doğru cevap ~37 m'ye düşer -> GOL
-                               # (2026-08-07: DRAG_K=0.025'e göre yeniden konumlandırıldı)
-const GOAL_DEPTH_PX := 42.0
-const RING_BULLS := 3.5       # "isabet" toleransı (m) — kale genişliği yerine kullanılır
-var target_x := 37.0          # doğru fiziğin indiği nokta (kale içi)
+# --- KALE / GOL: bkz. res://config/sim_config.tres (Physics.cfg.goal_x vb.) ---
+var target_x := 37.0          # doğru fiziğin indiği nokta (kale içi) — reset()'te güncellenir
 
-# --- SABİT oynatma hızı: 1x bazı kareleri atladığı için yavaşlatıldı ---
-var time_scale := 0.42   # SABİT optimum oynatma hızı (her ok rahat izlenir)
+# --- oynatma hızı: bkz. res://config/sim_config.tres (Physics.cfg.time_scale) ---
+var time_scale := Physics.cfg.time_scale
 var paused := false          # "Durdur" düğmesi
 
 # --- kuvvet okları (BÜYÜTÜLDÜ, topun TAM MERKEZİNDEN, topun ÖNÜNDE çizilir) ---
@@ -40,7 +36,7 @@ const C_VEL := Color("111827")
 const C_VX := Color("f59e0b")    # yatay hız bileşeni (vx)
 const C_VY := Color("a855f7")    # dikey hız bileşeni (vy)
 const C_COMP := Color("111827")
-const APEX_VY := 1.2
+# APEX_VY eşiği: bkz. res://config/sim_config.tres (Physics.cfg.apex_vy)
 
 # --- yörünge renkleri ---
 const C_PRED := Color("22c55e")          # öğrencinin tahmini (yeşil düz)
@@ -72,8 +68,7 @@ var pv_active := false
 var cam_zoom := 1.0
 var cam_shift := 0.0         # dikey kaydırma (m)
 const START_ZOOM := 1.55     # uçuş başındaki yakınlık (futbolcu büyük)
-const SPACE_START_M := 34.0  # bu irtifadan itibaren uzaya geçiş başlar
-const SPACE_FULL_M := 58.0   # bu irtifada arka plan tamamen uzay
+# SPACE_START_M/SPACE_FULL_M: bkz. res://config/sim_config.tres
 var space_f := 0.0           # 0=mavi gökyüzü, 1=uzay
 var fit_zoom := 1.0          # uçuş sonunda ulaşılacak uzaklaşma oranı
 var fit_maxx := 70.0
@@ -130,6 +125,7 @@ var confetti: Array = []
 var shake_t := 0.0
 var shake_off := Vector2.ZERO
 var stars: PackedVector2Array = []
+@onready var S: StringsData = get_node("/root/Strings")   # KOD YAZMADAN düzenlenebilir metinler (bkz. Strings.gd)
 
 func _ready() -> void:
 	set_process(true)
@@ -184,7 +180,7 @@ func set_preview(g: bool, k: bool, a: bool, drag_k: float, imp := 6.0) -> void:
 func _fit_camera() -> void:
 	# uçuş sonunda ulaşılacak "tam sığdırma" oranını hesapla; zoom buna
 	# KADEMELİ olarak iner (top ilerledikçe futbolcu küçülür).
-	var maxx := GOAL_X + 14.0
+	var maxx := Physics.cfg.goal_x + 14.0
 	var maxy := 8.0
 	for arr in [predicted, real]:
 		for pt in arr:
@@ -214,8 +210,8 @@ func start_flight(pred: Dictionary, real_res: Dictionary) -> void:
 	apex_seen = false
 	apex_flash = 0.0
 	end_msg_t = 0.0
-	var goal_depth_m := GOAL_DEPTH_PX / maxf(_base_scale(), 1.0)
-	hit_bulls = impact_x > 0.0 and impact_x >= GOAL_X - 1.0 and impact_x <= GOAL_X + goal_depth_m + 2.0
+	var goal_depth_m := Physics.cfg.goal_depth_px / maxf(_base_scale(), 1.0)
+	hit_bulls = impact_x > 0.0 and impact_x >= Physics.cfg.goal_x - 1.0 and impact_x <= Physics.cfg.goal_x + goal_depth_m + 2.0
 	kick_hold = false
 	kick_follow = true
 	kick_follow_t = 0.0
@@ -317,7 +313,7 @@ func _process(delta: float) -> void:
 		var prog := clampf(maxf(bpos.x / maxf(fit_maxx, 1.0), bpos.y / maxf(fit_maxy, 1.0)), 0.0, 1.0)
 		var want := lerpf(START_ZOOM, fit_zoom, prog)
 		cam_zoom = lerpf(cam_zoom, want, 1.0 - exp(-5.0 * delta))
-		if not apex_seen and f_gravity and play_t > 0.15 and absf(vel.y) < APEX_VY \
+		if not apex_seen and f_gravity and play_t > 0.15 and absf(vel.y) < Physics.cfg.apex_vy \
 				and _point_at(predicted, play_t).y > 2.0:
 			apex_seen = true
 			apex_flash = 1.0
@@ -364,7 +360,7 @@ func _draw() -> void:
 	var ball_alt := 0.0
 	if (playing or finished) and not trail.is_empty():
 		ball_alt = trail[trail.size() - 1].y
-	var target_f := clampf((ball_alt - SPACE_START_M) / (SPACE_FULL_M - SPACE_START_M), 0.0, 1.0)
+	var target_f := clampf((ball_alt - Physics.cfg.space_start_m) / (Physics.cfg.space_full_m - Physics.cfg.space_start_m), 0.0, 1.0)
 	space_f = lerpf(space_f, target_f, 0.12)   # yumuşak geçiş
 	var sky_col := Color("57a8ec").lerp(Color("0b1026"), space_f)
 	draw_rect(Rect2(Vector2.ZERO, Vector2(size.x, sky_h)), sky_col)
@@ -441,7 +437,7 @@ func _draw() -> void:
 			b0 += Vector2(6.0 * pk, -sin(PI * pk) * 16.0)
 		_draw_ball(b0)
 		if pv_active:
-			var launch := Vector2(cos(deg_to_rad(Physics.FIXED_ANGLE)), sin(deg_to_rad(Physics.FIXED_ANGLE))) * Physics.FIXED_V0
+			var launch := Vector2(cos(deg_to_rad(Physics.cfg.angle_deg)), sin(deg_to_rad(Physics.cfg.angle_deg))) * Physics.cfg.v0
 			_draw_force_arrows(b0, launch)
 			_draw_velocity(b0, launch)
 	# --- açıklama kutusu (yörünge renkleri) ---
@@ -504,12 +500,12 @@ func _draw_goal() -> void:
 	var scored := hit_bulls and finished
 	var score_t := end_msg_t
 	var goal_h_m := (size.y * 0.28) / _base_scale()
-	var g0 := _world_to_px(Vector2(GOAL_X, 0.0))          # ön-alt köşe
-	var g1 := _world_to_px(Vector2(GOAL_X, goal_h_m))     # ön-üst köşe
+	var g0 := _world_to_px(Vector2(Physics.cfg.goal_x, 0.0))          # ön-alt köşe
+	var g1 := _world_to_px(Vector2(Physics.cfg.goal_x, goal_h_m))     # ön-üst köşe
 	var top_y := g1.y
 	var base_y := g0.y
 	var goal_h_px := base_y - top_y
-	var depth := GOAL_DEPTH_PX * cam_zoom
+	var depth := Physics.cfg.goal_depth_px * cam_zoom
 	# gol anında ağ şişmesi: hızlı geri itilir, sönümlü salınımla dinginleşir
 	var bulge := 0.0
 	if scored:
@@ -597,10 +593,10 @@ func _draw_end_message() -> void:
 	else:
 		if hit_bulls:
 			sub = "GOL! Top kaleye girdi."
-		elif impact_x < GOAL_X:
-			sub = "Top kaleye ulaşamadı — %.1f m önce yere düştü." % (GOAL_X - impact_x)
+		elif impact_x < Physics.cfg.goal_x:
+			sub = "Top kaleye ulaşamadı — %.1f m önce yere düştü." % (Physics.cfg.goal_x - impact_x)
 		else:
-			sub = "Top kaleyi aştı — %.1f m ötede yere düştü." % (impact_x - GOAL_X)
+			sub = "Top kaleyi aştı — %.1f m ötede yere düştü." % (impact_x - Physics.cfg.goal_x)
 	var fs := 34
 	var tw := font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 	var sw := font.get_string_size(sub, HORIZONTAL_ALIGNMENT_LEFT, -1, 17).x
@@ -629,7 +625,7 @@ func _draw_ball(bp: Vector2) -> void:
 func _draw_force_arrows(ball_px: Vector2, vel: Vector2) -> void:
 	var arrows: Array = []
 	if f_gravity:
-		arrows.append({"a": Vector2(0, -Physics.G), "c": C_GRAVITY, "l": "Yerçekimi", "w": 6.0})
+		arrows.append({"a": Vector2(0, -Physics.cfg.gravity_g), "c": C_GRAVITY, "l": "Yerçekimi", "w": 6.0})
 	if f_air:
 		arrows.append({"a": -f_drag * vel.length() * vel, "c": C_AIR, "l": "Hava direnci", "w": 6.0})
 	if f_kick and vel.length() > 0.01:
@@ -663,9 +659,9 @@ func _draw_speed_readout(ball_px: Vector2, vel: Vector2) -> void:
 	if font == null:
 		return
 	var a := clampf(apex_flash, 0.0, 1.0)
-	var l1 := "TEPE NOKTASI"
-	var l2 := "dikey hız vy = 0"
-	var l3 := "ama ivme ↓ devam ediyor"
+	var l1 := S.t("APEX_L1")
+	var l2 := S.t("APEX_L2")
+	var l3 := S.t("APEX_L3")
 	var bw := maxf(maxf(font.get_string_size(l1, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x,
 					font.get_string_size(l2, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x),
 					font.get_string_size(l3, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x) + 20.0

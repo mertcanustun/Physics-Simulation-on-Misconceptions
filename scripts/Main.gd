@@ -15,9 +15,9 @@ var participant_code := ""
 var group := ""
 var attempt := 0
 var official := false
-var v0 := Physics.FIXED_V0     # SABİT — kullanıcı değiştiremez
-var angle := Physics.FIXED_ANGLE  # SABİT
-var kick_force := Physics.IMPETUS_ACC   # SABİT (yanılgı kuvvetinin büyüklüğü)
+var v0 := Physics.cfg.v0          # SABİT — kullanıcı değiştiremez (Inspector'dan ayarlanır)
+var angle := Physics.cfg.angle_deg  # SABİT
+var kick_force := Physics.cfg.impetus_acc   # SABİT (yanılgı kuvvetinin büyüklüğü)
 
 var field: FieldView
 var entry_center: CenterContainer
@@ -66,6 +66,7 @@ var sfx_goal: AudioStreamPlayer
 var save_dialog: FileDialog
 var events_dialog: FileDialog
 @onready var Tele: Node = get_node("/root/Telemetry")
+@onready var S: StringsData = get_node("/root/Strings")   # KOD YAZMADAN düzenlenebilir metinler (bkz. Strings.gd)
 
 func _ready() -> void:
 	_build_header()
@@ -216,10 +217,10 @@ func _build_kick_panel() -> void:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 10)
 	kick_panel.add_child(v)
-	v.add_child(_label("Top havada  🏃 ➡ ⚽", 24, TXT))
+	v.add_child(_label(S.t("KICK_PANEL_TITLE"), 24, TXT))
 	mode_banner = _label("", 11, Color("f59e0b"))
 	v.add_child(mode_banner)
-	q_intro = _label("Az önce bir futbol oyuncusu topa vurdu; top şu anda havada.\n\nYAPMAN GEREKEN: Topa etki ettiğini düşündüğün kuvvetlerin HEPSİNİ işaretle, sonra aşağıdaki yeşil düğmeye bas. Top senin seçimine göre uçacak; kesikli çizgi ve soluk top ise gerçekte olanı gösterecek. Doğru seçersen top kaledeki hedefe düşer.", 14, TXT_MUTED)
+	q_intro = _label(S.t("KICK_PANEL_INTRO"), 14, TXT_MUTED)
 	q_intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	q_intro.custom_minimum_size.x = 480
 	v.add_child(q_intro)
@@ -227,15 +228,15 @@ func _build_kick_panel() -> void:
 	q_hint.visible = false
 	v.add_child(q_hint)
 	v.add_child(_spacer(4))
-	cb_gravity = _force_box(v, "Yerçekimi", "topu aşağı çeker")
-	cb_kick = _force_box(v, "Vuruş kuvveti F", "temas bittikten sonra da itmeye devam eder")
+	cb_gravity = _force_box(v, "gravity", S.t("FORCE_GRAVITY_TITLE"), S.t("FORCE_GRAVITY_SUB"))
+	cb_kick = _force_box(v, "kick", S.t("FORCE_KICK_TITLE"), S.t("FORCE_KICK_SUB"))
 	kick_box = VBoxContainer.new()
 	kick_box.visible = false
 	v.add_child(kick_box)
-	cb_air = _force_box(v, "Hava direnci", "topu yavaşlatır")
+	cb_air = _force_box(v, "air", S.t("FORCE_AIR_TITLE"), S.t("FORCE_AIR_SUB"))
 	v.add_child(_spacer(8))
 	q_run_btn = Button.new()
-	q_run_btn.text = "Ne olacağını gör"
+	q_run_btn.text = S.t("KICK_PANEL_RUN_BTN")
 	q_run_btn.custom_minimum_size = Vector2(480, 46)
 	_style_button(q_run_btn, ACCENT_DK, Color.WHITE)
 	q_run_btn.pressed.connect(_on_run)
@@ -256,16 +257,14 @@ func _build_intro_modal() -> void:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 14)
 	panel.add_child(v)
-	v.add_child(_label("ℹ  Nasıl çalışır?", 22, TXT))
-	var body := _label(
-		"Birazdan başlayacak olan simülasyonda, bir futbolcunun topa vuruş anını izleyeceksiniz. Vuruş gerçekleştikten hemen sonra simülasyon duraklatılacak ve karşınıza şu soru çıkacaktır: \"Topa hangi kuvvetler etki etmektedir?\" Lütfen topa etki ettiğini düşündüğünüz kuvvetleri işaretleyiniz. Ardından, yaptığınız kuvvet seçimlerinin topun hareketini nasıl etkilediğini ekranda gözlemleyiniz.\n\nSimülasyon esnasında meydana gelen hız değişimlerini ve oluşan yörüngelerin (path) hangileri olduğunu soldaki panelden takip edebilirsiniz. Ayrıca, simülasyonu çalıştırdıktan sonra daha detaylı bir inceleme yapmak isterseniz alt kısımdaki kontrolleri kullanarak simülasyonu dilediğiniz yerde durdurabilir, tekrar oynatabilir veya sistemi sıfırlayarak soru ekranına geri dönebilirsiniz.\n\nBaşlamak için hazır olduğunuzda \"Devam Et\" butonuna tıklayınız.",
-		14, TXT_MUTED)
+	v.add_child(_label(S.t("POPUP_INTRO_TITLE"), 22, TXT))
+	var body := _label(S.t("POPUP_INTRO_BODY"), 14, TXT_MUTED)
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.custom_minimum_size.x = 480
 	v.add_child(body)
 	v.add_child(_spacer(4))
 	var btn := Button.new()
-	btn.text = "Devam Et"
+	btn.text = S.t("POPUP_INTRO_BTN")
 	btn.custom_minimum_size = Vector2(480, 46)
 	_style_button(btn, ACCENT_DK, Color.WHITE)
 	btn.pressed.connect(_on_intro_modal_continue)
@@ -277,7 +276,9 @@ func _on_intro_modal_continue() -> void:
 	# önce koşu-vuruş girişi; ayak topa değince (_on_intro_done) soru gösterilir
 	field.start_intro()
 
-func _force_box(parent: VBoxContainer, title: String, sub: String) -> CheckBox:
+## key: TELEMETRİ/log için SABİT dahili ad (CSV metni değişse de bozulmaz).
+## display_title/sub: ekranda görünen metin — res://localization/strings.csv'den gelir.
+func _force_box(parent: VBoxContainer, key: String, display_title: String, sub: String) -> CheckBox:
 	var pc := PanelContainer.new()
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = CARD2
@@ -296,21 +297,21 @@ func _force_box(parent: VBoxContainer, title: String, sub: String) -> CheckBox:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 1)
 	h.add_child(v)
-	v.add_child(_label(title, 15, TXT))
+	v.add_child(_label(display_title, 15, TXT))
 	v.add_child(_label(sub, 12, TXT_MUTED))
 	# hover kutunun tamamı için tek parça olsun: iç kontrolleri mouse'a kapat,
 	# yalnızca pc mouse alsın → checkbox/label üstünde enter/leave titremesi olmaz
 	for ch in pc.find_children("*", "Control", true, false):
 		ch.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	# telemetri: kutuya mouse girme/çıkma (ilk yaklaşılan seçenek + dwell) ve işaretleme
-	pc.mouse_entered.connect(func(): Tele.option_hover(title, true))
-	pc.mouse_exited.connect(func(): Tele.option_hover(title, false))
+	pc.mouse_entered.connect(func(): Tele.option_hover(key, true))
+	pc.mouse_exited.connect(func(): Tele.option_hover(key, false))
 	pc.gui_input.connect(func(ev):
 		if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
 			cb.button_pressed = not cb.button_pressed
 			cb.toggled.emit(cb.button_pressed))
 	cb.toggled.connect(func(on):
-		Tele.option_toggle(title, on)
+		Tele.option_toggle(key, on)
 		_update_preview())
 	return cb
 
@@ -346,7 +347,7 @@ func _build_result_modal() -> void:
 	result_title = _label("", 22, TXT)
 	result_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(result_title)
-	result_sub = _label("Simülasyon bitmiştir.", 13, TXT_MUTED)
+	result_sub = _label(S.t("RESULT_DEFAULT_SUB"), 13, TXT_MUTED)
 	result_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(result_sub)
 	var row := HBoxContainer.new()
@@ -441,11 +442,11 @@ func _update_choice_summary() -> void:
 		return
 	var parts := PackedStringArray()
 	if cb_gravity.button_pressed:
-		parts.append("Yerçekimi")
+		parts.append(S.t("FORCE_GRAVITY_TITLE"))
 	if cb_kick.button_pressed:
-		parts.append("Vuruş kuvveti F")
+		parts.append(S.t("FORCE_KICK_TITLE"))
 	if cb_air.button_pressed:
-		parts.append("Hava direnci")
+		parts.append(S.t("FORCE_AIR_TITLE"))
 	hud_choice.text = "Seçimin: " + (", ".join(parts) if parts.size() > 0 else "hiçbir kuvvet")
 
 func _set_force_rows_enabled(on: bool) -> void:
@@ -743,7 +744,7 @@ func _update_preview() -> void:
 	if kick_panel == null or not kick_center.visible:
 		return
 	field.set_preview(cb_gravity.button_pressed, cb_kick.button_pressed,
-		cb_air.button_pressed, Physics.DRAG_K, kick_force)
+		cb_air.button_pressed, Physics.cfg.drag_k, kick_force)
 
 # ------------------------------------------------------------ admin actions
 
@@ -784,13 +785,13 @@ func _on_run() -> void:
 	var g := cb_gravity.button_pressed
 	var k := cb_kick.button_pressed
 	var a := cb_air.button_pressed
-	var dk := Physics.DRAG_K
+	var dk := Physics.cfg.drag_k
 	var tx := field.target_x
-	var pred := Physics.simulate(g, k, a, dk, kick_force, tx, FieldView.RING_BULLS)
-	var real := Physics.real_path(tx, FieldView.RING_BULLS)
+	var pred := Physics.simulate(g, k, a, dk, kick_force, tx, Physics.cfg.ring_bulls)
+	var real := Physics.real_path(tx, Physics.cfg.ring_bulls)
 	var correct := g and a and not k
 	var landing_x: float = pred["impact_x"]
-	var is_goal := landing_x > 0.0 and absf(landing_x - field.target_x) <= FieldView.RING_BULLS
+	var is_goal := landing_x > 0.0 and absf(landing_x - field.target_x) <= Physics.cfg.ring_bulls
 	var category: String = _feedback(g, k, a)[0]
 	var decision_s := maxf(Time.get_ticks_msec() / 1000.0 - decision_started, 0.0)
 	# yalnızca yönetici bu kod için veri toplamayı açtıysa kaydet
@@ -812,7 +813,7 @@ func _on_run() -> void:
 
 func _on_flight_finished() -> void:
 	var gol := field.hit_bulls
-	result_badge_lbl.text = "GOL" if gol else "KAÇTI"
+	result_badge_lbl.text = S.t("BADGE_GOAL") if gol else S.t("BADGE_MISS")
 	result_badge_lbl.add_theme_color_override("font_color", ACCENT if gol else DANGER)
 	var bsb := StyleBoxFlat.new()
 	bsb.bg_color = Color(ACCENT if gol else DANGER, 0.15)
@@ -822,30 +823,30 @@ func _on_flight_finished() -> void:
 	bsb.content_margin_top = 6
 	bsb.content_margin_bottom = 6
 	result_badge.add_theme_stylebox_override("panel", bsb)
-	result_sub.text = "Simülasyon bitmiştir."
+	result_sub.text = S.t("RESULT_DEFAULT_SUB")
 	if gol:
-		result_title.text = "Top kaleye girdi!"
-		result_sub.text = "Simülasyon bitmiştir · tam isabet"
+		result_title.text = S.t("RESULT_GOAL_TITLE")
+		result_sub.text = S.t("RESULT_GOAL_SUB")
 	elif field.impact_x < 0.0:
-		result_title.text = "Top hiç yere inmedi"
-	elif field.impact_x < FieldView.GOAL_X:
-		result_title.text = "Top kaleye ulaşamadı"
-		result_sub.text = "Simülasyon bitmiştir · hedefin %.1f m önüne düştü" % (FieldView.GOAL_X - field.impact_x)
+		result_title.text = S.t("RESULT_NOLAND_TITLE")
+	elif field.impact_x < Physics.cfg.goal_x:
+		result_title.text = S.t("RESULT_SHORT_TITLE")
+		result_sub.text = S.t("RESULT_SHORT_SUB", ["%.1f" % (Physics.cfg.goal_x - field.impact_x)])
 	else:
-		result_title.text = "Top kaleyi aştı"
-		result_sub.text = "Simülasyon bitmiştir · hedefi %.1f m geçti" % (field.impact_x - FieldView.GOAL_X)
+		result_title.text = S.t("RESULT_OVER_TITLE")
+		result_sub.text = S.t("RESULT_OVER_SUB", ["%.1f" % (field.impact_x - Physics.cfg.goal_x)])
 	result_center.visible = true
 	Tele.run_complete(gol, field.impact_x)
 
 func _on_replay() -> void:
 	Tele.replay()
 	result_center.visible = false
-	var dk := Physics.DRAG_K
+	var dk := Physics.cfg.drag_k
 	var tx := field.target_x
 	field.start_flight(
 		Physics.simulate(cb_gravity.button_pressed, cb_kick.button_pressed,
-			cb_air.button_pressed, dk, kick_force, tx, FieldView.RING_BULLS),
-		Physics.real_path(tx, FieldView.RING_BULLS))
+			cb_air.button_pressed, dk, kick_force, tx, Physics.cfg.ring_bulls),
+		Physics.real_path(tx, Physics.cfg.ring_bulls))
 
 func _on_change_answer() -> void:
 	Tele.answer_change()
@@ -880,27 +881,24 @@ func _on_data_status() -> void:
 
 # ---------------------------------------------------------------- feedback
 
+## Not: dönen [0] (kategori) DataLog CSV'sinin "category" sütununa da yazılıyor
+## (araştırma verisi) — res://localization/strings.csv'deki FB_*_CAT metnini
+## değiştirirsen CSV'deki kategori etiketi de değişir (tasarım gereği, eskiden
+## de böyleydi). FB_*_MSG şu an ekranda gösterilmiyor (bkz. GELISTIRME-REHBERI.md
+## "geri bildirim metni kaldırıldı") ama ileride kullanılmak üzere hazır tutuluyor.
 func _feedback(g: bool, k: bool, a: bool) -> Array:
 	if g and a and not k:
-		return ["Yerçekimi + hava direnci",
-			"Doğru! Top havadayken üzerine yalnızca yerçekimi ve hava direnci etki eder — yörüngen gerçek (kesikli) yörüngenin tam üstüne oturdu. Vuruş topu harekete geçirdi ama vuruş kuvveti, ayak toptan ayrıldığı an sona erdi."]
+		return [S.t("FB_GA_CAT"), S.t("FB_GA_MSG")]
 	if g and not k and not a:
-		return ["Yalnızca yerçekimi",
-			"İdeal vakum parabolü — şekli doğru, ama hava direncini dışarıda bıraktın; bu yüzden top gerçek (kesikli) yörüngeden belirgin biçimde daha uzağa ve daha hızlı gidiyor."]
+		return [S.t("FB_G_CAT"), S.t("FB_G_MSG")]
 	if g and k and a:
-		return ["Yerçekimi + vuruş kuvveti + hava direnci",
-			"İkisi doğru — yerçekimi ve hava direnci gerçekten etki eder. Ama vuruş kuvveti topla birlikte seyahat etmez: yalnızca temas sırasında etki eder. Onu itmeye devam ettirdiğin için top gerçek (kesikli) yörüngeyi aşıyor."]
+		return [S.t("FB_GKA_CAT"), S.t("FB_GKA_MSG")]
 	if g and k and not a:
-		return ["Yerçekimi + vuruş kuvveti",
-			"Vuruş kuvveti topla birlikte kalmaz. Kuvvet temas gerektirir — ayak toptan ayrıldığı an o itiş biter. Onu sürdürüp hava direncini de atınca top gerçek (kesikli) yörüngenin çok ötesine uçuyor."]
+		return [S.t("FB_GK_CAT"), S.t("FB_GK_MSG")]
 	if k and not g and not a:
-		return ["Yalnızca vuruş kuvveti",
-			"Yerçekimi olmadan topu aşağı çeken hiçbir şey yok — hızlanarak uzaklaşır ve asla yere inmez. Gerçek (kesikli) yörüngeyle karşılaştır: uçuşu kavise büken şey yerçekimidir."]
+		return [S.t("FB_K_CAT"), S.t("FB_K_MSG")]
 	if k and a and not g:
-		return ["Vuruş kuvveti + hava direnci",
-			"Yerçekimi olmadan top asla yere inmez — itiş ile sürtünme birbiriyle çekişirken düz bir çizgide kayıp gider. Gerçek (kesikli) yörüngedeki kavis yerçekiminin işidir."]
+		return [S.t("FB_KA_CAT"), S.t("FB_KA_MSG")]
 	if a and not g and not k:
-		return ["Yalnızca hava direnci",
-			"Sürtünme topu yalnızca hareket doğrultusunda yavaşlatır — aşağı çeken bir şey yok; bu yüzden düz bir çizgide süzülüp havada asılı kalıyor. Yerçekimi eksik."]
-	return ["Hiç kuvvet yok",
-		"Hiç kuvvet yoksa top fırlatma hızını sonsuza dek korur (Newton'un 1. yasası) ve asla yere inmez. Gerçek uçuşta hem yerçekimi hem hava direnci etki eder — kesikli yörüngeye bak."]
+		return [S.t("FB_A_CAT"), S.t("FB_A_MSG")]
+	return [S.t("FB_NONE_CAT"), S.t("FB_NONE_MSG")]

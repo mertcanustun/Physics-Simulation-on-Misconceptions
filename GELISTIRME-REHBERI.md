@@ -428,3 +428,44 @@ içindeki `connect` satırı önceki bir düzenlemede kaybolmuştu; bu yüzden
 - `tools/smoke_test.gd` yeni şemaya göre güncellendi (sabit sütun indeksleri
   kayan yerlerde düzeltildi, `param_change` artık tetiklenmediği için
   zorunlu olay listesinden çıkarıldı).
+
+---
+# Güncelleme — teknik olmayan ekip arkadaşları için KOD YAZMADAN ayar/metin değiştirme
+
+İki mekanizma eklendi; ikisi de Godot editörünü açıp F5 ile çalıştırmaktan
+başka bir şey gerektirmiyor, GDScript'e dokunulmuyor.
+
+## 1. Sayısal parametreler → `res://config/sim_config.tres`
+Drag katsayısı, vuruş kuvveti F, yerçekimi, sekme/yuvarlanma sabitleri, kale
+konumu/toleransı, tepe noktası eşiği, uzay geçiş irtifaları, oynatma hızı —
+hepsi `scripts/SimConfig.gd`'de `@export` alanı. FileSystem panelinde
+`sim_config.tres`'e tıklayınca Inspector'da slider/sayı kutusu olarak çıkar.
+Kod tarafı: her yerde `Physics.cfg.<alan>` ile okunuyor (`Physics.gd` bunu
+`preload` ile bir kere yükler). DT (entegrasyon adımı) ve MAX_X/MAX_Y ekran
+sınırı bilerek DIŞARIDA — bunlar teknik iç ayarlar.
+
+## 2. Metinler → `res://localization/strings.csv`
+Popup metinleri, kuvvet seçeneği başlık/alt metinleri, sonuç ekranı
+yazıları, tepe noktası rozeti, geri bildirim kategorisi+mesajı — `key,text`
+sütunlu düz bir CSV. Excel/Sheets'te açılıp "text" sütunu değiştirilir,
+kaydedilir. `scripts/Strings.gd` (autoload `Strings`) her çalıştırmada okur;
+kod tarafı `S.t("ANAHTAR")` ile çağırıyor (yer tutuculu metinlerde
+`S.t("ANAHTAR", [değer])`). "key" sütununa dokunulmamalı.
+
+Godot'un kendi `TranslationServer`/CSV import sistemi kullanılmadı; o çoklu
+dil arasında GEÇİŞ için tasarlanmış ve editörde bir import adımı gerektiriyor.
+Bu proje hep Türkçe olduğu için basit bir dosya-okuma yeterli — daha az
+kırılgan.
+
+**DİKKAT — veri şeması ile karışmasın:**
+- `_force_box`'a artık kararlı bir dahili anahtar da veriliyor (`"gravity"`/
+  `"kick"`/`"air"`) — telemetride (`option_hover`/`option_toggle` olaylarının
+  `factor` alanı) bu kullanılıyor, CSV metnini değiştirmek bunu bozmaz.
+- Geri bildirim kategorisi (`FB_*_CAT`) HEM ekranda HEM DataLog CSV'sinin
+  `category` sütununda kullanılıyor (eskiden de böyleydi) — bu metni
+  değiştirmek araştırma verisindeki kategori etiketini de değiştirir, bilerek
+  öyle bırakıldı.
+
+**Yeni bir parametre/metin eklemek istersen:** `SimConfig.gd`'ye bir
+`@export` satırı veya `strings.csv`'ye bir satır eklemen, sonra ilgili
+scriptte `cfg.<alan>` / `S.t("ANAHTAR")` ile okuman yeterli.

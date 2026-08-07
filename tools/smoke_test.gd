@@ -14,10 +14,13 @@ func _init() -> void:
 
 	# --- 1. Veri toplama KAPALIYKEN kayıt olmamalı (deneme modu) ---
 	Session.deactivate(CODE)
-	# --script modunda autoload'lar kurulmaz: Telemetry'yi elle ekle
+	# --script modunda autoload'lar kurulmaz: Telemetry ve Strings'i elle ekle
 	var tele = load("res://scripts/Telemetry.gd").new()
 	tele.name = "Telemetry"
 	root.add_child(tele)
+	var strs = load("res://scripts/Strings.gd").new()
+	strs.name = "Strings"
+	root.add_child(strs)
 	var main = load("res://scenes/Main.tscn").instantiate()
 	root.add_child(main)
 	await process_frame          # _ready() çalışsın (arayüz kodla kuruluyor)

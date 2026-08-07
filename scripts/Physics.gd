@@ -6,47 +6,35 @@ class_name Physics
 ##   landed   : top yere indi mi (yerçekimsiz senaryolarda false)
 ##   rest_x   : top nerede durdu (sekmeler bitince)
 
-const G := 9.81
-# Hava direnci — kuadratik direnç katsayısı. Tek sabit (seviye seçimi kaldırıldı,
-# 2026-08-07): "Hava direnci" artık yerçekimi/vuruş kuvveti gibi basit açık/kapalı.
-const DRAG_K := 0.025
-const IMPETUS_ACC := 15.0   # "vuruş kuvveti itmeye devam eder" yanılgısı (m/s^2) — istenirse 30.0
+## Ayarlanabilir parametreler artık burada DEĞİL — res://config/sim_config.tres
+## içinde (kod yazmadan Godot Inspector'dan değiştirilir, bkz. SimConfig.gd).
+static var cfg: SimConfig = preload("res://config/sim_config.tres")
 
-# SABİT ATIŞ — kullanıcı artık hız/açı seçemez (deneysel kontrol).
-const FIXED_V0 := 30.0
-const FIXED_ANGLE := 45.0
-
-const DT := 1.0 / 240.0
-const MAX_T := 16.0
-const MAX_X := 200.0
-const MAX_Y := 400.0
-
-# Sekme (zıplama) — hedef bir çukur değil, yere serili hedef tahtası olduğu için
-# top çarpınca seker. Puan İLK çarpma noktasından verilir.
-const RESTITUTION := 0.34      # dikey hız kaybı
-const BOUNCE_FRICTION := 0.72  # çarpmada yatay hız kaybı
-const ROLL_FRICTION := 6.5     # yuvarlanma sürtünmesi (m/s^2) — top hedefin yanında durur
-const REST_VY := 1.2           # bu dikey hızın altında artık sekmez
+const DT := 1.0 / 240.0        # entegrasyon adımı — TEKNİK, buraya dokunma
+const MAX_X := 200.0           # ekran güvenlik sınırı — TEKNİK
+const MAX_Y := 400.0           # ekran güvenlik sınırı — TEKNİK
 
 ## Kuvvet seçimine göre yörünge. Sekme ve yuvarlanma dahil; top DURUNCA biter,
 ## böylece "havada asılı kalma" hatası oluşmaz.
 ## stick_x >= 0 ise: top hedef tahtasına düşerse SAPLANIR (dart gibi), sekmez.
 ## Iskalarsa normal sekme/yuvarlanma uygulanır.
+## drag_k/imp varsayılanları yalnızca güvenlik ağı — gerçek çağrılar hep
+## cfg.drag_k / cfg.impetus_acc'i açıkça geçirir.
 static func simulate(gravity: bool, kick: bool, air: bool,
-		drag_k := DRAG_K, imp := IMPETUS_ACC,
+		drag_k := 0.025, imp := 15.0,
 		stick_x := -1.0, stick_r := 0.0) -> Dictionary:
-	var ang := deg_to_rad(FIXED_ANGLE)
-	var vel := Vector2(cos(ang), sin(ang)) * FIXED_V0
+	var ang := deg_to_rad(cfg.angle_deg)
+	var vel := Vector2(cos(ang), sin(ang)) * cfg.v0
 	var pos := Vector2.ZERO
 	var t := 0.0
 	var pts: Array = [{"p": pos, "v": vel, "t": 0.0}]
 	var impact_x := -1.0
 	var landed := false
 	var rolling := false
-	while t < MAX_T:
+	while t < cfg.max_t:
 		var acc := Vector2.ZERO
 		if gravity:
-			acc.y -= G
+			acc.y -= cfg.gravity_g
 		if air:
 			acc -= drag_k * vel.length() * vel
 		if kick and vel.length() > 0.01:
@@ -54,7 +42,7 @@ static func simulate(gravity: bool, kick: bool, air: bool,
 		if rolling:
 			# yerde yuvarlanma: hareket yönünün tersine sabit sürtünme
 			if absf(vel.x) > 0.01:
-				acc.x -= signf(vel.x) * ROLL_FRICTION
+				acc.x -= signf(vel.x) * cfg.roll_friction
 			acc.y = 0.0
 		vel += acc * DT
 		pos += vel * DT
@@ -70,9 +58,9 @@ static func simulate(gravity: bool, kick: bool, air: bool,
 					vel = Vector2.ZERO   # hedefe saplandı — sekmez
 					pts.append({"p": pos, "v": vel, "t": t})
 					break
-			if gravity and absf(vel.y) > REST_VY:
-				vel.y = -vel.y * RESTITUTION      # sek
-				vel.x *= BOUNCE_FRICTION
+			if gravity and absf(vel.y) > cfg.rest_vy:
+				vel.y = -vel.y * cfg.restitution      # sek
+				vel.x *= cfg.bounce_friction
 			else:
 				vel.y = 0.0
 				rolling = true                    # artık yuvarlanıyor
@@ -92,7 +80,7 @@ static func simulate(gravity: bool, kick: bool, air: bool,
 
 ## GERÇEK yörünge — her zaman doğru fizik (yerçekimi + gerçek hava direnci).
 static func real_path(stick_x := -1.0, stick_r := 0.0) -> Dictionary:
-	return simulate(true, false, true, DRAG_K, 0.0, stick_x, stick_r)
+	return simulate(true, false, true, cfg.drag_k, 0.0, stick_x, stick_r)
 
 ## Hedef tahtasının merkezi = gerçek fiziğin ilk yere değdiği nokta.
 static func target_x() -> float:
