@@ -1,12 +1,12 @@
 key,text
-POPUP_INTRO_TITLE,"ℹ  Nasıl çalışır?"
+POPUP_INTRO_TITLE,"Nasıl çalışır?"
 POPUP_INTRO_BODY,"Birazdan başlayacak olan simülasyonda, bir futbolcunun topa vuruş anını izleyeceksiniz. Vuruş gerçekleştikten hemen sonra simülasyon duraklatılacak ve karşınıza şu soru çıkacaktır: ""Topa hangi kuvvetler etki etmektedir?"" Lütfen topa etki ettiğini düşündüğünüz kuvvetleri işaretleyiniz. Ardından, yaptığınız kuvvet seçimlerinin topun hareketini nasıl etkilediğini ekranda gözlemleyiniz.
 
 Simülasyon esnasında meydana gelen hız değişimlerini ve oluşan yörüngelerin (path) hangileri olduğunu soldaki panelden takip edebilirsiniz. Ayrıca, simülasyonu çalıştırdıktan sonra daha detaylı bir inceleme yapmak isterseniz alt kısımdaki kontrolleri kullanarak simülasyonu dilediğiniz yerde durdurabilir, tekrar oynatabilir veya sistemi sıfırlayarak soru ekranına geri dönebilirsiniz.
 
 Başlamak için hazır olduğunuzda ""Devam Et"" butonuna tıklayınız."
 POPUP_INTRO_BTN,"Devam Et"
-KICK_PANEL_TITLE,"Top havada  🏃 ➡ ⚽"
+KICK_PANEL_TITLE,"Top havada"
 KICK_PANEL_INTRO,"Az önce bir futbol oyuncusu topa vurdu; top şu anda havada.
 
 YAPMAN GEREKEN: Topa etki ettiğini düşündüğün kuvvetlerin HEPSİNİ işaretle, sonra aşağıdaki yeşil düğmeye bas. Top senin seçimine göre uçacak; kesikli çizgi ve soluk top ise gerçekte olanı gösterecek. Doğru seçersen top kaledeki hedefe düşer."
