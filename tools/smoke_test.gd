@@ -41,7 +41,7 @@ func _init() -> void:
 	main.cb_gravity.button_pressed = true
 	main.cb_kick.button_pressed = false
 	main.cb_air.button_pressed = true
-	main.kick_force = 13.0
+	Physics.cfg.impetus_acc = 13.0
 	main.v0 = 28.0
 	main.angle = 40.0
 	main._on_run()

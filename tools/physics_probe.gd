@@ -15,8 +15,9 @@ static func accel(v: Vector2, gravity: bool, air: bool, drag_k: float, kick: boo
 		a.y -= G
 	if air:
 		a -= drag_k * v.length() * v
-	if kick and v.length() > 0.01:
-		a += v.normalized() * imp
+	if kick:
+		# Physics.gd ile aynı model: SABİT yönlü F (atış açısı)
+		a += Vector2(cos(deg_to_rad(ANGLE)), sin(deg_to_rad(ANGLE))) * imp
 	return a
 
 ## RK4 ile ilk zemin çarpma noktası (interpolasyonlu, dt neyse o çözünürlükte).

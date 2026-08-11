@@ -525,3 +525,55 @@ scriptte `cfg.<alan>` / `S.t("ANAHTAR")` ile okuman yeterli.
    değiştirdiyseniz sekmede küçük bir "değişti" işareti görürsünüz).
 7. Git ile commit/push edin (yalnızca `config/sim_config.tres` ve/veya
    `localization/strings.csv` değişmiş olacak — kod dosyalarına dokunmadınız).
+
+---
+# Güncelleme — UI/kamera/ses/fizik görev listesi
+
+## Task 1 — Kontrol çubuğu, metinler, mobil
+- "▶ Vuruşu başlat" KALDIRILDI: soru kutusundaki yeşil düğmeyle aynı işi yapan
+  ikinci bir düğmeydi, çakışmanın ve yanlış metnin kaynağı buydu.
+  Yerine **"↻ Tekrar"** (son atışı yeniden oynatır; yalnız uçuş bitince aktif).
+- Çubuk: Tekrar · ⏸ Durdur · ↺ Sıfırla · 🔊 Sesler açık/kapalı.
+  Sabit genişlikler kaldırıldı (Vector2(0,40)) → HBox kendi ölçüsünü alıyor,
+  butonlar üst üste binmiyor.
+- **Mobil uyum:** `_apply_responsive_layout()` eklendi ve `resized` sinyaline
+  bağlandı. Panel genişlikleri `_panel_w()` ile ekrana kırpılıyor (520 px
+  istenir, dar ekranda `size.x - 32`), HUD kartı dar ekranda daralıp yukarı
+  kayıyor, butonlar mobilde 44 px (dokunma hedefi).
+  `project.godot`: `window/handheld/orientation="sensor"`.
+  Doğrulandı: 1280x720, 820x1180 ve 390x844'te paneller ekrana sığıyor.
+
+## Task 2 — Kamera ve ekran dışı
+- Zoom yumuşatma sabit 5.0 iken **`cfg.camera_smooth` (varsayılan 2.0)** oldu →
+  belirgin biçimde daha yumuşak. zoom_min/zoom_max zaten cfg'de
+  (`camera_min_zoom` 0.16 / `camera_max_zoom` 1.0).
+- **Ekran dışı tespiti düzeltildi.** Eski koşul dünya sabitine (MAX_X=200 m)
+  bakıyordu; ekran ölçüsüyle ilgisi yoktu, bu yüzden tetiklenmiyordu.
+  Yeni ölçüt GÖRÜNÜR alan: top ekran dikdörtgeninin (%20 pay) dışında
+  kesintisiz 0.7 sn kalırsa uçuş erken sonlanır. (VisibleOnScreenNotifier2D
+  kullanılmadı: sahne Control tabanlı, top bir Node2D değil — çizim
+  koordinatı üzerinden kontrol doğru yöntem.)
+
+## Task 3 — Ses ve görsel
+- **Bulutlar kaldırıldı** (cloud_count/cloud_speed cfg'den de silindi),
+  çim biçme şeritleri kaldırıldı → **düz tek ton yeşil**, rengi Inspector'dan:
+  `Görünüm → grass_color`.
+- **Rüzgar sesi:** slot boştu, bu yüzden hiç çalmıyordu. `assets/audio/wind.wav`
+  üretildi (3.6 sn, döngü için baş-son çapraz karışımlı) ve `wind_sfx`
+  varsayılanı olarak bağlandı; Inspector'dan değiştirilebilir.
+  Çalma anında loop garanti altına alındı, uçuş bitince susuyor.
+- **Sesleri Aç/Kapat** düğmesi eklendi (AudioServer ana bus mute).
+- **Her soru öncesi vuruş animasyonu:** `cfg.intro_before_each_question`
+  (varsayılan kapalı). AÇIK ise "Sıfırla" ve "Yeni cevap dene" sonrası
+  koşu-vuruş animasyonu yeniden oynar, soru animasyon bitince açılır.
+
+## Task 4 — Fizik ve gözden geçirme
+- **Kuvvet aktarımı:** `Main.kick_force` cfg'den bir kez kopyalanan bayat bir
+  değişkendi; Inspector'dan F değiştirildiğinde eski değer kullanılabiliyordu.
+  Kaldırıldı, tüm çağrılar doğrudan `Physics.cfg.impetus_acc` kullanıyor.
+  Testle doğrulandı: cfg'ye 13.0 yazıldığında CSV'ye 13.0 düşüyor.
+- **Renk/kontrast kontrolleri:** FieldView'da bayat sabit KALMADI; ok renkleri,
+  kalınlıkları ve yörünge renkleri tamamen cfg'den okunuyor (doğrulandı).
+- **Logger:** Telemetry + Strings autoload kayıtlı, Main'de 16 hook yerinde,
+  gizlilik kapısı çalışıyor — deneme modunda sıfır olay, resmi modda tam
+  olay zinciri (testte doğrulandı).
