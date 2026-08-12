@@ -7,13 +7,15 @@
 # Godot dışa aktarımları
 /build/
 /export/
-export_presets.cfg
 
 # arşivler
 *.zip
 
-# strings.csv, kendi Strings.gd okuyucumuz tarafından okunuyor; Godot yine de
-# onu otomatik "CSV Translation" olarak import edip şu ikisini üretiyor —
-# kullanılmıyorlar, tekrar üretilebilirler, repoyu şişirmesinler.
-localization/*.import
-localization/*.translation
+# NOT (2026-08-12): export_presets.cfg ARTIK TAKİP EDİLİYOR.
+# İçinde gizli bilgi yok ve "Web" preset'indeki
+#   include_filter="localization/*.csv"
+# satırı olmadan dışa aktarılan build'de TÜM METİNLER KAYBOLUYOR
+# (bkz. GELISTIRME-REHBERI "Web export metin hatası"). Repoda durmalı.
+#
+# Aynı sebeple localization/*.import da takip ediliyor: dosya yoksa temiz bir
+# klonda "godot --headless --export-release" ilk çalıştırmada farklı davranır.

@@ -11,10 +11,8 @@ class_name Physics
 static var cfg: SimConfig = preload("res://config/sim_config.tres")
 
 const DT := 1.0 / 240.0        # entegrasyon adımı — TEKNİK, buraya dokunma
-## Oyun alanı sınırı artık res://config/sim_config.tres içinde
-## (Oyun Alanı grubu: world_max_x / world_max_y). Eski sabitler 200 m / 400 m idi;
-## o kadar geniş alanda top ekrandan çoktan çıktığı için "ekran dışı" koşulu
-## güvenilir tetiklenmiyordu (madde 8).
+const MAX_X := 200.0           # ekran güvenlik sınırı — TEKNİK
+const MAX_Y := 400.0           # ekran güvenlik sınırı — TEKNİK
 
 ## Kuvvet seçimine göre yörünge. Sekme ve yuvarlanma dahil; top DURUNCA biter,
 ## böylece "havada asılı kalma" hatası oluşmaz.
@@ -75,8 +73,8 @@ static func simulate(gravity: bool, kick: bool, air: bool,
 			pts.append({"p": pos, "v": vel, "t": t})
 			break                                  # TAM DURDU -> yörünge biter
 		pts.append({"p": pos, "v": vel, "t": t})
-		if pos.x > cfg.world_max_x or pos.y > cfg.world_max_y or pos.x < -10.0:
-			break                                  # oyun alanını terk etti (yerçekimsiz senaryo)
+		if pos.x > MAX_X or pos.y > MAX_Y:
+			break                                  # ekranı terk etti (yerçekimsiz senaryo)
 	return {
 		"points": pts,
 		"impact_x": impact_x,

@@ -8,8 +8,8 @@ extends Resource
 ##   3. Sağda "Inspector" panelinde tüm değerler slider/sayı kutusu olarak çıkar.
 ##   4. Değiştir, Ctrl+S ile kaydet, projeyi çalıştır (F5) — kod dokunulmadı.
 ##
-## NOT: DT (entegrasyon adım aralığı) burada YOK — teknik iç ayar, yanlış değer
-## simülasyonu bozar. Oyun alanı sınırı ise ARTIK BURADA ("Oyun Alanı" grubu).
+## NOT: DT (entegrasyon adım aralığı) ve MAX_X/MAX_Y (ekran güvenlik sınırı)
+## burada YOK — bunlar teknik iç ayarlar, yanlış değer simülasyonu bozabilir.
 ## Buraya yeni bir parametre eklemek istersen: bir @export satırı ekle, sonra
 ## Physics.gd/FieldView.gd/Main.gd içindeki ilgili sabiti "cfg.<yeni_alan>" ile değiştir.
 ##
@@ -50,15 +50,6 @@ extends Resource
 @export_range(0.0, 100.0, 1.0, "suffix:m") var space_start_m: float = 34.0   ## bu irtifadan sonra arka plan uzaya dönmeye başlar
 @export_range(0.0, 150.0, 1.0, "suffix:m") var space_full_m: float = 58.0    ## bu irtifada arka plan tamamen uzay
 
-@export_group("Oyun Alanı (ekran dışı koşulu)")
-## Top bu sınırları aşarsa yörünge KESİLİR ve "top yere inmedi" sonucu tetiklenir.
-## Eskiden koddaki sabit 200 m / 400 m idi — o kadar geniş alanda top ekrandan
-## çoktan çıkmış oluyor, koşul geç/hiç tetiklenmiyordu.
-@export_range(40.0, 300.0, 1.0, "suffix:m") var world_max_x: float = 120.0
-@export_range(40.0, 400.0, 1.0, "suffix:m") var world_max_y: float = 90.0
-@export_range(0.0, 0.6, 0.01, "suffix:× ekran") var offscreen_margin: float = 0.04   ## bu kadar dışarı çıkınca "ekran dışı" sayılır
-@export_range(0.05, 2.0, 0.05, "suffix:sn") var offscreen_grace_s: float = 0.25      ## bu kadar süre dışarıda kalırsa uçuş biter
-
 @export_group("Oynatma")
 @export_range(0.05, 2.0, 0.01) var time_scale: float = 0.42   ## sahnenin oynatma hızı (1.0 = gerçek zaman)
 
@@ -67,20 +58,11 @@ extends Resource
 @export_range(20.0, 400.0, 5.0, "suffix:px") var arrow_max_px: float = 150.0       ## ok en fazla bu kadar uzayabilir
 @export_range(0.3, 3.0, 0.05, "suffix:×") var arrow_head_ratio: float = 1.0        ## ok ucu / gövde oranı
 @export var gravity_arrow_color: Color = Color("2563eb")
-@export_range(1.0, 20.0, 0.5, "suffix:px") var gravity_arrow_thickness: float = 4.0
-## Hava direnci (sürtünme) oku — turkuazdan AYRILDI: mor-magenta. Yeşil
-## (tahmin yolu), turkuaz (eski hâli) ve mavi (yerçekimi) ile karışmaz.
-@export var air_arrow_color: Color = Color("c026d3")
-@export_range(1.0, 20.0, 0.5, "suffix:px") var air_arrow_thickness: float = 4.0
+@export_range(1.0, 20.0, 0.5, "suffix:px") var gravity_arrow_thickness: float = 6.0
+@export var air_arrow_color: Color = Color("0891b2")
+@export_range(1.0, 20.0, 0.5, "suffix:px") var air_arrow_thickness: float = 6.0
 @export var kick_arrow_color: Color = Color("dc2626")
-@export_range(1.0, 20.0, 0.5, "suffix:px") var kick_arrow_thickness: float = 4.0
-## Ok etiketleri: arkasına renkli bir "rozet" çizilir ve büyüklük (N) yazılır —
-## kuvvetin hangi ok olduğu ve NE KADAR olduğu uzaktan da okunur.
-@export var arrow_label_badge: bool = true
-@export var arrow_label_show_magnitude: bool = true
-@export_range(9, 28, 1, "suffix:px") var arrow_label_size: int = 15
-@export_range(0.0, 1.0, 0.05) var arrow_outline_alpha: float = 0.45   ## okun koyu dış hattı (zemine karşı okunurluk)
-@export var force_legend: bool = true   ## sol altta kalıcı kuvvet renk anahtarı
+@export_range(1.0, 20.0, 0.5, "suffix:px") var kick_arrow_thickness: float = 6.0
 
 @export_group("Yörünge Çizgileri")
 @export var predicted_path_color: Color = Color("22c55e")     ## öğrencinin tahmini (düz çizgi)
@@ -94,64 +76,17 @@ extends Resource
 @export_range(0.05, 1.0, 0.01, "suffix:×") var camera_min_zoom: float = 0.16   ## en uzak (top ekrandan taşmasın)
 @export_range(0.2, 2.0, 0.05, "suffix:×") var camera_max_zoom: float = 1.0     ## en yakın
 @export_range(0.0, 30.0, 0.5, "suffix:m") var camera_margin_m: float = 6.0     ## top kenara bu kadar yaklaşınca kamera uzaklaşmaya başlar
-@export_range(0.5, 8.0, 0.1) var camera_smooth: float = 2.0    ## kamera yumuşatma (küçük = daha yumuşak; eski davranış ~5)
-## AÇIK (varsayılan): kamera uçuş sırasında yalnızca UZAKLAŞIR, geri yakınlaşmaz.
-## Aşırı zoom in/out "pompalamasının" asıl sebebi buydu: top alçalırken ilerleme
-## oranı düşüyor, kamera geri yakınlaşıyor, sonra tekrar uzaklaşıyordu.
-@export var camera_zoom_monotonic: bool = true
-@export_range(0.05, 4.0, 0.05, "suffix:×/sn") var camera_max_zoom_rate: float = 0.55   ## saniyede en fazla bu kadar zoom değişir
+## Uzaklaşmanın YUMUŞAKLIĞI. Küçük = yavaş/sakin, büyük = sert/hızlı.
+## 5.0 eski (çok hızlı bulunan) değerdi; 2.4 sakin uzaklaşma verir.
+@export_range(0.5, 12.0, 0.1) var camera_zoom_speed: float = 2.4
 
-@export_group("Görünüm")
-@export var grass_color: Color = Color("1e5a2a")               ## çim rengi (düz, tek ton — koyu yeşil)
-@export var ground_line_color: Color = Color("14401d")         ## zemin çizgisi
-@export var sky_color: Color = Color("57a8ec")                 ## gökyüzü (tek ton)
-## AÇIK (varsayılan): arka plan SADE — düz mavi gökyüzü + düz yeşil çim.
-## Yıldız/gezegen/uzay geçişi çizilmez. Eski dekoratif görünümü isteyen
-## ekip üyesi bunu Inspector'dan KAPATIR (kod gerekmez).
-@export var simple_background: bool = true
-
-@export_group("Kontrast / Erişilebilirlik")
-## 1.0 = dokunma. Büyütürsen tüm ok/yörünge/etiket renkleri koyu zemine karşı
-## daha parlak ve daha doygun çizilir (projeksiyon perdesi / güneş ışığı için).
-@export_range(0.5, 2.0, 0.05, "suffix:×") var contrast: float = 1.0
-## AÇIK: renkler azami ayırt edilebilirliğe zorlanır (düşük görüşe / renk körlüğüne
-## karşı). contrast ile birlikte çalışır.
-@export var high_contrast: bool = false
-@export_range(0.0, 1.0, 0.05) var path_min_brightness: float = 0.0   ## yörünge çizgileri için taban parlaklık
+@export_group("Gökyüzü")
+@export_range(0, 15, 1) var cloud_count: int = 4               ## arka planda kaç bulut olsun (0 = kapalı)
+@export_range(0.0, 60.0, 1.0, "suffix:px/sn") var cloud_speed: float = 8.0   ## bulutların kayma hızı
 
 @export_group("Ses")
 @export var kick_sfx: AudioStream = preload("res://assets/audio/kick.mp3")   ## vuruş sesi (küçük top sıçraması anında çalar)
-@export var wind_sfx: AudioStream = preload("res://assets/audio/wind.wav")   ## rüzgar sesi — top "uzayda" DEĞİLKEN, uçuş boyunca çalar (varsayılan: üretilmiş yumuşak uğultu; Inspector'dan değiştirilebilir)
-
-@export_range(-40.0, 6.0, 0.5, "suffix:dB") var sfx_volume_db: float = 0.0    ## vuruş/alkış ses seviyesi
-@export_range(-40.0, 6.0, 0.5, "suffix:dB") var wind_volume_db: float = -6.0  ## rüzgâr ses seviyesi
-@export var sound_enabled: bool = true   ## başlangıçta sesler açık mı (kullanıcı alt çubuktaki düğmeyle de değiştirir)
+@export var wind_sfx: AudioStream   ## rüzgar sesi — top "uzayda" DEĞİLKEN, uçuş boyunca çalar (loop'lu bir dosya seç; henüz atanmadı, boşsa çalmaz)
 
 @export_group("Zamanlama")
 @export_range(0.0, 2.0, 0.02, "suffix:sn") var question_delay_s: float = 0.22   ## ayak topa değdikten kaç sn sonra "Top havada" sorusu çıksın
-@export var intro_before_each_question: bool = false   ## AÇIK: her yeni soru öncesi koşu-vuruş animasyonu yeniden oynar (yalnız ilk girişte değil)
-
-# ---------------------------------------------------------------- kontrast
-## Bir rengi "Kontrast / Erişilebilirlik" ayarlarına göre düzeltir.
-## Arayüz KOYU zemin üzerine çizildiği için kontrastı artırmak = rengi
-## parlaklaştır + doygunlaştır. contrast=1.0 ve high_contrast=false iken
-## renk HİÇ değişmez (varsayılan davranış birebir korunur).
-func adj(c: Color) -> Color:
-	if is_equal_approx(contrast, 1.0) and not high_contrast and path_min_brightness <= 0.0:
-		return c
-	var out := c
-	if high_contrast:
-		out.s = clampf(out.s * 1.30, 0.0, 1.0)
-		out.v = clampf(maxf(out.v, 0.70) * 1.10, 0.0, 1.0)
-	var k := contrast - 1.0
-	out.v = clampf(out.v + k * 0.30, 0.04, 1.0)
-	out.s = clampf(out.s + k * 0.15, 0.0, 1.0)
-	if path_min_brightness > 0.0:
-		out.v = maxf(out.v, path_min_brightness)
-	out.a = c.a
-	return out
-
-## Ok/etiket çizgi kalınlığı — yüksek kontrast modunda biraz kalınlaşır ki
-## ince oklar (madde 13) düşük görüşte de seçilebilsin.
-func adj_width(w: float) -> float:
-	return w * (1.35 if high_contrast else 1.0)

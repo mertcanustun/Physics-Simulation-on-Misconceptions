@@ -527,53 +527,166 @@ scriptte `cfg.<alan>` / `S.t("ANAHTAR")` ile okuman yeterli.
    `localization/strings.csv` değişmiş olacak — kod dosyalarına dokunmadınız).
 
 ---
-# Güncelleme — UI/kamera/ses/fizik görev listesi
+# Güncelleme (2026-08-12) — DIŞA AKTARILAN BUILD'DE METİNLERİN KAYBOLMASI + F büyüklüğü
 
-## Task 1 — Kontrol çubuğu, metinler, mobil
-- "▶ Vuruşu başlat" KALDIRILDI: soru kutusundaki yeşil düğmeyle aynı işi yapan
-  ikinci bir düğmeydi, çakışmanın ve yanlış metnin kaynağı buydu.
-  Yerine **"↻ Tekrar"** (son atışı yeniden oynatır; yalnız uçuş bitince aktif).
-- Çubuk: Tekrar · ⏸ Durdur · ↺ Sıfırla · 🔊 Sesler açık/kapalı.
-  Sabit genişlikler kaldırıldı (Vector2(0,40)) → HBox kendi ölçüsünü alıyor,
-  butonlar üst üste binmiyor.
-- **Mobil uyum:** `_apply_responsive_layout()` eklendi ve `resized` sinyaline
-  bağlandı. Panel genişlikleri `_panel_w()` ile ekrana kırpılıyor (520 px
-  istenir, dar ekranda `size.x - 32`), HUD kartı dar ekranda daralıp yukarı
-  kayıyor, butonlar mobilde 44 px (dokunma hedefi).
-  `project.godot`: `window/handheld/orientation="sensor"`.
-  Doğrulandı: 1280x720, 820x1180 ve 390x844'te paneller ekrana sığıyor.
+## 1. HATA: export'ta tüm ekran metinleri anahtar ismine düşüyordu
 
-## Task 2 — Kamera ve ekran dışı
-- Zoom yumuşatma sabit 5.0 iken **`cfg.camera_smooth` (varsayılan 2.0)** oldu →
-  belirgin biçimde daha yumuşak. zoom_min/zoom_max zaten cfg'de
-  (`camera_min_zoom` 0.16 / `camera_max_zoom` 1.0).
-- **Ekran dışı tespiti düzeltildi.** Eski koşul dünya sabitine (MAX_X=200 m)
-  bakıyordu; ekran ölçüsüyle ilgisi yoktu, bu yüzden tetiklenmiyordu.
-  Yeni ölçüt GÖRÜNÜR alan: top ekran dikdörtgeninin (%20 pay) dışında
-  kesintisiz 0.7 sn kalırsa uçuş erken sonlanır. (VisibleOnScreenNotifier2D
-  kullanılmadı: sahne Control tabanlı, top bir Node2D değil — çizim
-  koordinatı üzerinden kontrol doğru yöntem.)
+**Belirti.** Editörde (F5) her şey normal; ama `--export-release "Web"` ile
+üretilip Vercel'e konan build'de başlıklar/butonlar/geri bildirimler
+`POPUP_INTRO_TITLE`, `FORCE_GRAVITY_TITLE`, `BADGE_GOAL`, `FB_GA_CAT` gibi
+ANAHTAR İSİMLERİ olarak görünüyordu. DataLog CSV'sinin `category` sütununa da
+metin yerine `FB_*_CAT` anahtarı yazılıyordu (araştırma verisi bozulur).
 
-## Task 3 — Ses ve görsel
-- **Bulutlar kaldırıldı** (cloud_count/cloud_speed cfg'den de silindi),
-  çim biçme şeritleri kaldırıldı → **düz tek ton yeşil**, rengi Inspector'dan:
-  `Görünüm → grass_color`.
-- **Rüzgar sesi:** slot boştu, bu yüzden hiç çalmıyordu. `assets/audio/wind.wav`
-  üretildi (3.6 sn, döngü için baş-son çapraz karışımlı) ve `wind_sfx`
-  varsayılanı olarak bağlandı; Inspector'dan değiştirilebilir.
-  Çalma anında loop garanti altına alındı, uçuş bitince susuyor.
-- **Sesleri Aç/Kapat** düğmesi eklendi (AudioServer ana bus mute).
-- **Her soru öncesi vuruş animasyonu:** `cfg.intro_before_each_question`
-  (varsayılan kapalı). AÇIK ise "Sıfırla" ve "Yeni cevap dene" sonrası
-  koşu-vuruş animasyonu yeniden oynar, soru animasyon bitince açılır.
+**Sebep.** Godot projedeki her `.csv`'yi varsayılan olarak "CSV Translation"
+diye **import eder**. Import edilmiş bir dosyanın **kaynağı .pck'ye konmaz** —
+sadece üretilen `strings.text.translation` konur. `Strings.gd` ise ham dosyayı
+`FileAccess.open("res://localization/strings.csv")` ile okuyor; export'ta bu
+`null` dönüyor, `_map` boş kalıyor, `t()` anahtarın kendisini döndürüyordu.
+Editörde çalışmasının sebebi ham dosyanın diskte duruyor olması — yani hata
+YALNIZCA dışa aktarımda görünüyor.
 
-## Task 4 — Fizik ve gözden geçirme
-- **Kuvvet aktarımı:** `Main.kick_force` cfg'den bir kez kopyalanan bayat bir
-  değişkendi; Inspector'dan F değiştirildiğinde eski değer kullanılabiliyordu.
-  Kaldırıldı, tüm çağrılar doğrudan `Physics.cfg.impetus_acc` kullanıyor.
-  Testle doğrulandı: cfg'ye 13.0 yazıldığında CSV'ye 13.0 düşüyor.
-- **Renk/kontrast kontrolleri:** FieldView'da bayat sabit KALMADI; ok renkleri,
-  kalınlıkları ve yörünge renkleri tamamen cfg'den okunuyor (doğrulandı).
-- **Logger:** Telemetry + Strings autoload kayıtlı, Main'de 16 hook yerinde,
-  gizlilik kapısı çalışıyor — deneme modunda sıfır olay, resmi modda tam
-  olay zinciri (testte doğrulandı).
+**Çözüm (uygulandı).** `res://localization/strings.csv.import` içeriği:
+
+    [remap]
+
+    importer="keep"
+
+("Keep File (exported as is)". Editörden: FileSystem'de `strings.csv` → Import
+sekmesi → Import As: **Keep File** → Reimport.) Böylece ham CSV `.pck`ye
+olduğu gibi konuyor. Doğrulandı: dışa aktarılmış pack tek başına çalıştırıldığında
+42 anahtarın 42'si de Türkçe metinle geliyor.
+
+**DENENDİ, İŞE YARAMADI:** `export_presets.cfg` içinde
+`include_filter="localization/*.csv"`. Import edilmiş bir dosyanın kaynağını
+pakete eklemiyor — sadece `.import` dosyasını ekliyor. `importer="keep"` şart.
+
+**Güvenlik ağı.** `Strings.gd` artık CSV açılamazsa Godot'un ürettiği
+`.translation` kaynağına düşüyor ve `push_warning` basıyor. (Not:
+`OptimizedTranslation.get_message_list()` boş döner, bu yüzden yedek liste
+olarak değil anahtar anahtar SORGU olarak kullanılıyor.)
+
+**`.gitignore` düzeltildi.** Eskiden `export_presets.cfg` ve
+`localization/*.import` ignore ediliyordu — yani temiz bir klonda ne Web
+preset'i ne de `importer="keep"` ayarı vardı, hata kendiliğinden geri gelirdi.
+İkisi de artık takip ediliyor.
+
+## 2. `impetus_acc` 22.5 → 4.0 (sabit yönlü F'in büyüklüğü)
+
+F sabit yönlü olduğundan (atış açısı boyunca) dikey bileşeni
+`imp · sin45° = 0.707·imp`. `imp = 22.5` iken bu 15.9 m/s² > g = 9.81 → net
+ivme kalıcı olarak YUKARI: F içeren HER cevap "Top hiç yere inmedi" ekranına
+düşüyordu ve `landing_x_m` CSV'ye `-1.00` yazılıyordu. Yani "Yerçekimi + Hava +
+F" (en yaygın yanılgı cevabı) ile "yerçekimini hiç seçmemiş" cevaplar ayırt
+edilemiyordu; `FB_GKA_MSG` metni ("top gerçek yörüngeyi aşıyor") de ekranda
+olanla çelişiyordu.
+
+`docs/gozden-gecirme-ve-vercel.md`'de önerilen 3–4 bandının üst ucu seçildi:
+**`impetus_acc = 4.0`** (yalnız `config/sim_config.tres` değişti, kod değil).
+
+### Doğrulanmış son değerler (v0=30 m/s, 45°, drag_k=0.025, kale 34.0 m)
+
+| Seçim | İniş | Sonuç |
+|---|---|---|
+| Yerçekimi + Hava — **DOĞRU** | 37.00 m | **GOL** |
+| Yalnız yerçekimi | 91.66 m | kaçtı |
+| Yerçekimi + F | 181.10 m | kaçtı |
+| Yerçekimi + Hava + F | 56.24 m | kaçtı |
+| Yalnız F / Yalnız Hava / F+Hava / Hiç kuvvet | — | "Top hiç yere inmedi" |
+
+Artık **yerçekimi seçilen her cevap yere iniyor**, "hiç inmedi" ekranı yalnızca
+yerçekimini atlayan cevaplara ayrılmış durumda — kavramsal ayrım geri geldi.
+Topun ekranda daha yakına inmesini istersen `impetus_acc`i 3.0'a çek
+(Yerçekimi+F 149 m'ye, Yerçekimi+Hava+F 50 m'ye iner). Kod gerekmez.
+
+## 3. Dağıtım önbelleği (2026-08-12b) — "düzelttim ama hâlâ eski sürümü görüyorum"
+
+İlk düzeltilmiş build dağıtıldıktan sonra ekranda hâlâ anahtar isimleri
+(`KICK_PANEL_TITLE`, `FORCE_GRAVITY_TITLE` ...) görüldü. Sebep kodda değildi:
+dosya adları iki dağıtımda da aynıydı (`/index.pck`, `/index.wasm`), tarayıcı
+ve CDN eski `.pck`'yi önbellekten servis ediyordu.
+
+Alınan önlemler:
+- Web çıktısı artık **sürümlü bir alt klasöre** üretiliyor (`/b20260812b/...`),
+  kökteki `index.html` oraya yönlendiriyor. Yeni sürümde klasör adı değişince
+  tüm URL'ler yenilenir → önbellek imkânsız.
+- `vercel.json`: yönlendirme sayfası `no-store`, sürümlü varlıklar `immutable`.
+- `Main.gd` içine `BUILD_ID` eklendi ve `_ready`'de konsola basılıyor:
+
+      === kicked-ball build 2026-08-12b | metin: 42 anahtar yüklendi | impetus_acc=4.0 ... ===
+
+  `metin: 0` / `-1` → CSV pakete girmemiş. Build numarası beklenenden eskiyse →
+  eski sürüm servis ediliyor. F12 → Console, tek bakışta ayırt edilir.
+  (`Strings.count()` bu sayıyı verir; -1 = .translation yedeğine düşülmüş.)
+
+Doğrulandı: Godot **4.5.1** ile sıfırdan (`.godot` silinmiş halde) açılıp
+yeniden dışa aktarıldığında `importer="keep"` korunuyor ve ham CSV `.pck`ye
+giriyor — düzeltme editör açılışına dayanıklı.
+
+---
+# Güncelleme (2026-08-12c) — Berk'in metin/arayüz istekleri + metin kaynağı sağlamlaştırma
+
+## 1. Metinlerin pakete girmesi artık GARANTİ (üç katman)
+
+Vercel'de metinlerin anahtar ismine düşmesi sorunu tek bir ayara (CSV'nin
+import modu) bağlıydı. Artık üç katman var, `Strings.gd` sırayla dener:
+
+| # | Kaynak | Ne zaman devreye girer |
+|---|---|---|
+| 1 | `localization/strings.csv` | normal durum (editör + `importer="keep"` ile export) |
+| 2 | `scripts/StringsBaked.gd` | CSV pakete girmemişse — **GDScript her zaman pakete girer** |
+| 3 | `localization/*.text.translation` | ikisi de yoksa |
+
+2. katman `tools/bake_strings.gd` ile üretilir:
+
+    godot --headless --path . --script tools/bake_strings.gd
+
+**CSV'yi her düzenledikten sonra bu komutu çalıştır.** Unutursan sessizce
+bozulmaz; yalnızca 1. katmanın düştüğü senaryoda eski metin görünür ve konsola
+`push_warning` düşer. Doğrulandı: import modu bilerek bozulduğunda 55 anahtarın
+55'i de 2. katmandan yüklendi.
+
+`Main._ready` konsola hangi katmanın kullanıldığını da yazdırabilir
+(`S.source_name()` → `csv` / `baked` / `translation` / `YOK`).
+
+## 2. Metin değişiklikleri (Berk)
+- Giriş popup'ı ve soru paneli metinleri yenilendi.
+- Sonuç ekranları: `TAM İSABET` / `YÖRÜNGE SAPTI` rozetleri,
+  "Top kaleye ulaştı!" / "Top kaleyi aştı", alt metinler
+  "Kuvvetler farklı bir yörünge oluşturdu · ...".
+- **Başarılı ekran iki düğme:** `Simülasyonu Bitir` + `Kuvvetleri Değiştir`.
+  **Başarısız ekran tek düğme:** `Kuvvetleri Değiştir`. (`btn_finish.visible = gol`)
+- `Simülasyonu Bitir` → telemetriye `finish_pressed` yazar, oturumu kapatır ve
+  **teşekkür ekranını** açar (geri dönüş yok — katılımcı için simülasyon biter).
+- Alt çubuk düğmeleri de CSV'den geliyor (`CTRL_*` anahtarları).
+
+## 3. Arayüz düzeltmeleri
+- **Emojiler kaldırıldı** (başlık, alt çubuk düğmeleri, popup başlığı). Godot'un
+  varsayılan fontu bunları kutu olarak çiziyordu.
+- `vx` yanındaki **"· sabit"** etiketi kaldırıldı.
+- Alt çubuktaki **"Vuruşu başlat" → "Tekrar"**. Davranış: uçuş bittiyse aynı
+  seçimi yeniden oynatır (`_on_replay`), henüz uçuş yoksa atışı başlatır.
+  Böylece art arda basmak sahte deneme kaydı üretmez.
+- **Zoom out yavaşlatıldı:** eskiden koda gömülü olan yumuşatma katsayısı
+  (`exp(-5.0*delta)`) artık Inspector'dan ayarlanıyor —
+  `sim_config.tres → Kamera → camera_zoom_speed`, yeni varsayılan **2.4**.
+- **Soru paneli taşma düzeltmesi:** metinler CSV'den geldiği ve uzayabildiği
+  için panel içeriği `ScrollContainer`a alındı; yeşil "Ne olacağını gör"
+  düğmesi scroll'un DIŞINDA sabit duruyor, yani metin ne kadar uzarsa uzasın
+  düğme her zaman ekranda. Panelin ortalama alanı da üst/alt çubuk payları
+  kadar daraltıldı (`TOP_BAR_H`/`BOTTOM_BAR_H`).
+
+## 4. Vuruş sonrası top havada kalıyor
+Eskiden ayak topa değince top küçük bir yay çizip **geri düşüyordu**
+(`sin(PI*pk)`). Artık yükselip **orada kalıyor**: `FieldView.HOLD_OFFSET`
+(varsayılan `(10, -26)` px) — soru paneli açıkken top futbolcunun ayağının
+üstünde asılı duruyor. Yükseklik/konum bu sabitten ayarlanır.
+
+## 5. Yeni seçenekler (alt kontrol çubuğu)
+- **`Animasyon: Açık/Kapalı`** — açıkken her soru ekranından önce koşu-vuruş
+  girişi yeniden oynar ("Kuvvetleri Değiştir" ve "Sıfırla" yolları ortak
+  `_back_to_question()` üzerinden). Kapalıyken soru hemen açılır ve top
+  `FieldView.hold_after_kick()` ile doğrudan "vuruş yapıldı, havada" konumuna
+  alınır — metindeki "top şu an havada" ifadesiyle çelişmesin diye.
+- **`Ses: Açık/Kapalı`** — vuruş, alkış ve rüzgar seslerini tek düğmeden
+  susturur. Kapatılınca çalan sesler de anında durdurulur.
+- İkisi de telemetriye `param_change` olarak yazılır.

@@ -175,6 +175,13 @@ func replay() -> void:
 	if _active():
 		_write("replay", {"attempt": _attempt})
 
+## "Simülasyonu Bitir" — katılımcı oturumu kendi isteğiyle bitirdi
+## (Main._on_finish_sim). end_session'dan HEMEN ÖNCE yazılır ki oturumun
+## normal mi bittiği yoksa yarıda mı kaldığı analizde ayırt edilebilsin.
+func run_finish_pressed() -> void:
+	if _active():
+		_write("finish_pressed", {"attempt": _attempt})
+
 ## Uçuş bitti — sonuç (Main._on_flight_finished).
 func run_complete(goal: bool, impact_x: float, category := "") -> void:
 	if _active():

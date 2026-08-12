@@ -12,11 +12,7 @@ signal speed_report(speed: float, vx: float, vy: float)   # sol HUD kartı için
 signal altitude_report(alt_m: float, in_space: bool)   # Main burada rüzgar sesini yönetir
 
 # --- sahne ölçüleri ---
-## Vuruş noktası (px, soldan). MADDE 9 (kısmî): sabit 330 px dar telefonlarda
-## ekranın ortasına düşüyor ve topun uçacağı yer kalmıyordu. Artık ekran
-## genişliğine oranlı, ama sol HUD kartını kapatmayacak kadar sağda.
-const ORIGIN_X_MAX := 330.0
-const ORIGIN_X_MIN := 168.0
+const ORIGIN_X := 330.0      # vuruş noktası (px, soldan) — sol HUD kartlarını kapatmasın
 const RIGHT_MARGIN := 40.0
 const DEFAULT_SPAN_M := 70.0 # zoom=1'de görünen yatay mesafe (m)
 
@@ -68,14 +64,15 @@ var cam_shift := 0.0         # dikey kaydırma (m)
 # START_ZOOM/SPACE_START_M/SPACE_FULL_M: bkz. res://config/sim_config.tres
 # (Physics.cfg.camera_start_zoom, .space_start_m, .space_full_m)
 var space_f := 0.0           # 0=mavi gökyüzü, 1=uzay
-var offscreen_t := 0.0       # top görünür alan dışında ne kadar kaldı (sn)
 var fit_zoom := 1.0          # uçuş sonunda ulaşılacak uzaklaşma oranı
-var zoom_prog := 0.0         # kamera ilerleme oranı — MONOTON (geri gitmez, bkz. madde 12)
 var fit_maxx := 70.0
 var fit_maxy := 20.0
 
 # --- giriş animasyonu ---
 const INTRO_DUR := 1.25
+## Vuruştan sonra topun asılı kaldığı yer (px, ekran koordinatı: -y = yukarı).
+## Futbolcunun ayağının hemen üstü. Soru paneli açıkken top burada durur.
+const HOLD_OFFSET := Vector2(10.0, -26.0)
 var intro_active := false
 var intro_t := 0.0
 # ayak topa değdi ama gerçek uçuş henüz yok: top küçük bir sıçrama yapar
@@ -125,6 +122,7 @@ var confetti: Array = []
 var shake_t := 0.0
 var shake_off := Vector2.ZERO
 var stars: PackedVector2Array = []
+var clouds: Array = []   # her biri {x_px, y_f (0-1 sky_h'a göre), scale} — Physics.cfg.cloud_count/cloud_speed
 @onready var S: StringsData = get_node("/root/Strings")   # KOD YAZMADAN düzenlenebilir metinler (bkz. Strings.gd)
 
 func _ready() -> void:
@@ -136,6 +134,12 @@ func _ready() -> void:
 		stars.append(Vector2(rng.randf(), rng.randf() * 0.72))
 	var crng := RandomNumberGenerator.new()
 	crng.seed = 20260807
+	for i in range(Physics.cfg.cloud_count):
+		clouds.append({
+			"x": crng.randf() * 1280.0,
+			"y_f": crng.randf_range(0.08, 0.55),
+			"scale": crng.randf_range(0.7, 1.4),
+		})
 	sp_idle = _load_frames("res://assets/sprites/player/idle", 4)
 	sp_run = _load_frames("res://assets/sprites/player/run", 6)
 	sp_kick = _load_frames("res://assets/sprites/player/kick", 7)
@@ -154,18 +158,15 @@ func _ready() -> void:
 			var ur := img.get_used_rect()
 			ball_rect = Rect2(ur.position, ur.size) if ur.size.x > 0 else Rect2(Vector2.ZERO, ball_tex.get_size())
 
-func _origin_x() -> float:
-	return clampf(size.x * 0.26, ORIGIN_X_MIN, ORIGIN_X_MAX)
-
 func _base_scale() -> float:
-	return maxf((size.x - _origin_x() - RIGHT_MARGIN) / DEFAULT_SPAN_M, 1.0)
+	return maxf((size.x - ORIGIN_X - RIGHT_MARGIN) / DEFAULT_SPAN_M, 1.0)
 
 func _ground_y() -> float:
 	return size.y * 0.80
 
 func _world_to_px(p: Vector2) -> Vector2:
 	var s := _base_scale() * cam_zoom
-	var anchor := Vector2(_origin_x(), _ground_y()) + shake_off
+	var anchor := Vector2(ORIGIN_X, _ground_y()) + shake_off
 	return anchor + Vector2(p.x * s, -(p.y - cam_shift) * s)
 
 func set_forces(g: bool, k: bool, a: bool, drag_k: float, imp: float = Physics.cfg.impetus_acc) -> void:
@@ -200,7 +201,17 @@ func _fit_camera() -> void:
 	fit_maxy = maxy
 	cam_zoom = Physics.cfg.camera_start_zoom  # YAKINDAN başla: top uzaklaştıkça uzaklaş -> futbolcu KÜÇÜLÜR
 	cam_shift = 0.0
-	zoom_prog = 0.0
+
+## Animasyon KAPALIYKEN kullanılır: koşu-vuruş oynatılmadan doğrudan
+## "vuruş yapıldı, top havada asılı" durumuna geçilir. Böylece soru panelindeki
+## "top şu an havada" metni ekrandaki görüntüyle çelişmez.
+func hold_after_kick() -> void:
+	intro_active = false
+	prekick_active = false
+	prekick_t = 0.0
+	kick_hold = true
+	kick_follow = false
+	queue_redraw()
 
 func start_flight(pred: Dictionary, real_res: Dictionary) -> void:
 	predicted = pred["points"]
@@ -221,7 +232,6 @@ func start_flight(pred: Dictionary, real_res: Dictionary) -> void:
 	kick_hold = false
 	kick_follow = true
 	kick_follow_t = 0.0
-	offscreen_t = 0.0
 	confetti.clear()
 	_fit_camera()
 	queue_redraw()
@@ -250,9 +260,7 @@ func reset() -> void:
 	shake_off = Vector2.ZERO
 	cam_zoom = Physics.cfg.camera_start_zoom
 	cam_shift = 0.0
-	zoom_prog = 0.0
 	space_f = 0.0
-	offscreen_t = 0.0
 	queue_redraw()
 
 func start_intro() -> void:
@@ -291,6 +299,12 @@ func _process(delta: float) -> void:
 	var sdt := delta * time_scale
 	if paused:
 		sdt = 0.0
+	if Physics.cfg.cloud_speed > 0.0 and not clouds.is_empty():
+		for c in clouds:
+			c["x"] += delta * Physics.cfg.cloud_speed
+			if c["x"] > size.x + 120.0:
+				c["x"] = -120.0
+		animating = true
 	if intro_active:
 		intro_t += delta * time_scale
 		animating = true
@@ -321,20 +335,8 @@ func _process(delta: float) -> void:
 		# --- GENEL ZOOM OUT: topun kat ettiği yola göre tüm sahne uzaklaşır ---
 		var bpos := _point_at(predicted, play_t)
 		var prog := clampf(maxf(bpos.x / maxf(fit_maxx, 1.0), bpos.y / maxf(fit_maxy, 1.0)), 0.0, 1.0)
-		# MADDE 12 — aşırı zoom in/out düzeltmesi:
-		#   Eskiden `prog` doğrudan kullanılıyordu. Top TEPE NOKTASINI geçip
-		#   alçalmaya başlayınca bpos.y küçülüyor -> prog düşüyor -> kamera geri
-		#   YAKINLAŞIYOR, sonra yatayda ilerleyince tekrar uzaklaşıyordu. Sonuç:
-		#   görünür "pompalama". Artık ilerleme geri gitmez (monoton) ve zoom
-		#   saniyede en fazla camera_max_zoom_rate kadar değişir.
-		if Physics.cfg.camera_zoom_monotonic:
-			zoom_prog = maxf(zoom_prog, prog)
-		else:
-			zoom_prog = prog
-		var want := lerpf(Physics.cfg.camera_start_zoom, fit_zoom, zoom_prog)
-		var next_zoom := lerpf(cam_zoom, want, 1.0 - exp(-Physics.cfg.camera_smooth * delta))
-		var max_step := Physics.cfg.camera_max_zoom_rate * delta
-		cam_zoom = clampf(next_zoom, cam_zoom - max_step, cam_zoom + max_step)
+		var want := lerpf(Physics.cfg.camera_start_zoom, fit_zoom, prog)
+		cam_zoom = lerpf(cam_zoom, want, 1.0 - exp(-Physics.cfg.camera_zoom_speed * delta))
 		if not apex_seen and f_gravity and play_t > 0.15 and absf(vel.y) < Physics.cfg.apex_vy \
 				and _point_at(predicted, play_t).y > 2.0:
 			apex_seen = true
@@ -342,21 +344,6 @@ func _process(delta: float) -> void:
 		if apex_flash > 0.0:
 			apex_flash = maxf(apex_flash - delta * 0.55, 0.0)
 		animating = true
-		# --- EKRAN DIŞI: top görünür alanı terk ettiyse uçuşu bitir ---
-		if not trail.is_empty():
-			var bpx := _world_to_px(trail[-1])
-			# MADDE 8 — "top ekrandan çıktı" koşulu:
-			#   Eskiden tolerans ekran genişliğinin %20'si + 0.7 sn idi; top çoktan
-			#   görünmez olduğu hâlde koşul geç tetikleniyor (bazı senaryolarda hiç
-			#   tetiklenmiyor) ve öğrenci boş ekrana bakıyordu. Tolerans ve süre
-			#   artık Inspector'dan (Oyun Alanı grubu) ayarlanabilir ve dar.
-			var scr_rect := Rect2(Vector2.ZERO, size).grow(size.x * Physics.cfg.offscreen_margin)
-			if scr_rect.has_point(bpx):
-				offscreen_t = 0.0
-			else:
-				offscreen_t += delta
-				if offscreen_t > Physics.cfg.offscreen_grace_s:
-					play_t = last_t   # uçuşu sonlandır (sonuç zaten hesaplı)
 		if play_t >= last_t:
 			playing = false
 			finished = true
@@ -397,25 +384,30 @@ func _draw() -> void:
 	var ball_alt := 0.0
 	if (playing or finished) and not trail.is_empty():
 		ball_alt = trail[trail.size() - 1].y
-	var target_f := clampf((ball_alt - Physics.cfg.space_start_m) / maxf(Physics.cfg.space_full_m - Physics.cfg.space_start_m, 0.001), 0.0, 1.0)
-	space_f = lerpf(space_f, target_f, 0.12)   # yumuşak geçiş (rüzgar sesi bunu kullanır)
-	# MADDE 6 — SADE ARKA PLAN (varsayılan): düz mavi gökyüzü + düz yeşil çim.
-	# Yıldız/gezegen/uzay geçişi yalnızca simple_background KAPALIYKEN çizilir.
-	if Physics.cfg.simple_background:
-		draw_rect(Rect2(Vector2.ZERO, Vector2(size.x, sky_h)), Physics.cfg.sky_color)
-	else:
-		var sky_col := Physics.cfg.sky_color.lerp(Color("0b1026"), space_f)
-		draw_rect(Rect2(Vector2.ZERO, Vector2(size.x, sky_h)), sky_col)
-		if space_f > 0.03 and sky_h > 8.0:
-			for st in stars:
-				var sp := Vector2(st.x * size.x, st.y * sky_h)
-				draw_circle(sp, 1.2, Color(1, 1, 1, 0.85 * space_f))
-			_draw_planets(sky_h, space_f)
+	var target_f := clampf((ball_alt - Physics.cfg.space_start_m) / (Physics.cfg.space_full_m - Physics.cfg.space_start_m), 0.0, 1.0)
+	space_f = lerpf(space_f, target_f, 0.12)   # yumuşak geçiş
+	var sky_col := Color("57a8ec").lerp(Color("0b1026"), space_f)
+	draw_rect(Rect2(Vector2.ZERO, Vector2(size.x, sky_h)), sky_col)
+	if space_f < 0.97 and sky_h > 8.0:
+		_draw_clouds(sky_h, 1.0 - space_f)   # uzaya geçtikçe bulutlar solar
+	if space_f > 0.03 and sky_h > 8.0:
+		for st in stars:
+			var sp := Vector2(st.x * size.x, st.y * sky_h)
+			draw_circle(sp, 1.2, Color(1, 1, 1, 0.85 * space_f))
+		_draw_planets(sky_h, space_f)
 	# çim: biçme şeritleri (koyu tasarıma uygun)
 	if grass_top < size.y:
-		draw_rect(Rect2(Vector2(0, grass_top), Vector2(size.x, size.y - grass_top)), Physics.cfg.grass_color)
+		draw_rect(Rect2(Vector2(0, grass_top), Vector2(size.x, size.y - grass_top)), Color("2f7d3a"))
+		var s_px := _base_scale() * cam_zoom * 6.0
+		var i := 0
+		var x := _world_to_px(Vector2.ZERO).x - s_px * 12.0
+		while x < size.x:
+			if i % 2 == 0 and x + s_px > 0.0:
+				draw_rect(Rect2(Vector2(maxf(x, 0.0), grass_top), Vector2(minf(s_px, size.x), size.y - grass_top)), Color("35893f"))
+			x += s_px
+			i += 1
 	if ground_y >= 0.0 and ground_y < size.y:
-		draw_line(Vector2(0, ground_y), Vector2(size.x, ground_y), Physics.cfg.ground_line_color, 2.0)
+		draw_line(Vector2(0, ground_y), Vector2(size.x, ground_y), Color("1f4d26"), 2.0)
 	# mesafe çizgileri (her 10 m) — uzaklığı okunur kılar
 	var font := get_theme_default_font()
 	var m := 10
@@ -443,7 +435,7 @@ func _draw() -> void:
 		var scr := PackedVector2Array()
 		for wp in trail:
 			scr.append(_world_to_px(wp))
-		draw_polyline(scr, Physics.cfg.adj(Physics.cfg.predicted_path_color), Physics.cfg.adj_width(Physics.cfg.predicted_path_thickness), true)
+		draw_polyline(scr, Physics.cfg.predicted_path_color, Physics.cfg.predicted_path_thickness, true)
 	# --- 2) GERÇEK yörünge: NOKTALI ve yeşil yolun ÜSTÜNDE ---
 	if (playing or finished) and real.size() > 1:
 		_draw_dotted_real()
@@ -463,18 +455,21 @@ func _draw() -> void:
 	elif pv_active or intro_active or prekick_active:
 		var b0 := _world_to_px(Vector2.ZERO) + Vector2(0, -10)
 		if prekick_active:
-			# ayak topa değdi: küçük bir sıçrama — vuruş sesini görsel olarak
-			# justify eder ama gerçek uçuş DEĞİL (top aynı yere iner)
-			var pk := clampf(prekick_t / Physics.cfg.question_delay_s, 0.0, 1.0)
-			b0 += Vector2(6.0 * pk, -sin(PI * pk) * 16.0)
+			# ayak topa değdi: top KALKAR ve orada KALIR (aşağı geri düşmez).
+			# Eskiden sin(PI*pk) ile inip kalkıyordu; "vurduktan sonra top
+			# havada, ayağın üstünde kalsın" isteği üzerine yükselip asılı
+			# kalacak biçimde değiştirildi (bkz. HOLD_OFFSET).
+			var pk := clampf(prekick_t / maxf(Physics.cfg.question_delay_s, 0.0001), 0.0, 1.0)
+			b0 += HOLD_OFFSET * ease(pk, 0.35)
+		elif kick_hold:
+			# soru paneli açıkken: top havada asılı, futbolcunun ayağının üstünde
+			b0 += HOLD_OFFSET
 		_draw_ball(b0)
 		if pv_active:
 			var launch := Vector2(cos(deg_to_rad(Physics.cfg.angle_deg)), sin(deg_to_rad(Physics.cfg.angle_deg))) * Physics.cfg.v0
 			_draw_force_arrows(b0, launch)
 			_draw_velocity(b0, launch)
-	# --- kuvvet renk anahtarı (MADDE 7) ---
-	if Physics.cfg.force_legend and (playing or finished or pv_active):
-		_draw_force_legend()
+	# --- açıklama kutusu (yörünge renkleri) ---
 	# --- konfeti ---
 	for piece in confetti:
 		var col: Color = piece["c"]
@@ -488,6 +483,17 @@ func _draw() -> void:
 ## Uzay bandındaki gezegenler (ekran-sabit süsleme; kamera zoomundan etkilenmez).
 ## Basit prosedürel bulutlar (üst üste yumuşak daireler) — Physics.cfg.cloud_count/
 ## cloud_speed ile ayarlanır; top "uzaya" yaklaştıkça solar (a katsayısı ile).
+func _draw_clouds(sky_h: float, a: float) -> void:
+	for c in clouds:
+		var cx: float = c["x"]
+		var cy: float = sky_h * c["y_f"]
+		var s: float = c["scale"] * (sky_h / 300.0 if sky_h > 0.0 else 1.0)
+		var col := Color(1, 1, 1, 0.75 * a)
+		draw_circle(Vector2(cx, cy), 22.0 * s, col)
+		draw_circle(Vector2(cx - 20.0 * s, cy + 6.0 * s), 16.0 * s, col)
+		draw_circle(Vector2(cx + 22.0 * s, cy + 5.0 * s), 18.0 * s, col)
+		draw_circle(Vector2(cx + 4.0 * s, cy - 10.0 * s), 15.0 * s, col)
+
 func _draw_planets(sky_h: float, a: float) -> void:
 	# halkalı gezegen (sağ üst)
 	var c1 := Vector2(size.x * 0.84, sky_h * 0.15)
@@ -565,7 +571,7 @@ func _draw_dotted_real() -> void:
 		acc += prev.distance_to(cur)
 		if acc >= Physics.cfg.real_path_dot_gap:
 			acc = 0.0
-			draw_circle(cur, Physics.cfg.real_path_dot_radius, Physics.cfg.adj(Physics.cfg.real_path_color))   # nokta
+			draw_circle(cur, Physics.cfg.real_path_dot_radius, Physics.cfg.real_path_color)   # nokta
 		prev = cur
 		i += 1
 
@@ -616,11 +622,7 @@ func _draw_ball(bp: Vector2) -> void:
 	draw_circle(bp, 12.0, Color.WHITE)
 	draw_arc(bp, 12.0, 0, TAU, 24, Color("1f2937"), 2.0)
 
-## Kuvvet okları — topun TAM MERKEZİNDEN başlar, topun ÖNÜNDE çizilir.
-## MADDE 7 (kuvveti daha görünür yap): her okun ucunda artık RENKLİ BİR ROZET
-## içinde adı VE büyüklüğü (newton) yazıyor; rozetler üst üste binmesin diye
-## çakışanlar kaydırılıyor. MADDE 13: oklar daha ince (kalınlıklar Inspector'dan).
-## MADDE 14: hava direnci oku turkuaz değil, ayırt edilebilir mor-magenta.
+## Kuvvet okları — topun TAM MERKEZİNDEN başlar, topun ÖNÜNDE çizilir, BÜYÜK.
 func _draw_force_arrows(ball_px: Vector2, vel: Vector2) -> void:
 	var arrows: Array = []
 	if f_gravity:
@@ -631,7 +633,6 @@ func _draw_force_arrows(ball_px: Vector2, vel: Vector2) -> void:
 		# F artık SABİT yönlü (atış açısı) — ok da hıza değil o yöne çizilir
 		var fixed_dir := Vector2(cos(deg_to_rad(Physics.cfg.angle_deg)), sin(deg_to_rad(Physics.cfg.angle_deg)))
 		arrows.append({"a": (fixed_dir * f_impetus) / Physics.cfg.mass_kg, "c": Physics.cfg.kick_arrow_color, "l": "Vuruş F", "w": Physics.cfg.kick_arrow_thickness})
-	var used: Array = []           # yerleştirilmiş rozet dikdörtgenleri (çakışma önleme)
 	for arr in arrows:
 		var acc: Vector2 = arr["a"]
 		if acc.length() < 0.05:
@@ -639,45 +640,7 @@ func _draw_force_arrows(ball_px: Vector2, vel: Vector2) -> void:
 		var scr := Vector2(acc.x, -acc.y) * Physics.cfg.arrow_scale
 		if scr.length() > Physics.cfg.arrow_max_px:
 			scr = scr.normalized() * Physics.cfg.arrow_max_px
-		var label: String = arr["l"]
-		if Physics.cfg.arrow_label_show_magnitude:
-			# F = m·a (kütle ÇARPANI cfg.mass_kg) — öğrenci "hangi kuvvet daha
-			# büyük" sorusunu okla birlikte SAYIYLA da görsün
-			label += "  %.1f N" % (acc.length() * Physics.cfg.mass_kg)
-		_draw_arrow(ball_px, ball_px + scr, Physics.cfg.adj(arr["c"]), label,
-			Physics.cfg.adj_width(arr["w"]), false, used)
-
-## Kalıcı kuvvet renk anahtarı (sol alt) — hangi rengin hangi kuvvet olduğu
-## ok ekranda olmasa da okunur. Inspector: Vektör Okları -> Force Legend.
-func _draw_force_legend() -> void:
-	var font := get_theme_default_font()
-	if font == null:
-		return
-	var rows: Array = [
-		{"c": Physics.cfg.gravity_arrow_color, "l": "Yerçekimi", "on": f_gravity},
-		{"c": Physics.cfg.air_arrow_color, "l": "Hava direnci", "on": f_air},
-		{"c": Physics.cfg.kick_arrow_color, "l": "Vuruş F", "on": f_kick},
-		{"c": C_VEL, "l": "v (hız)", "on": true},
-	]
-	var fs := 12
-	var pad := 9.0
-	var line_h := 18.0
-	var w := 0.0
-	for r in rows:
-		w = maxf(w, font.get_string_size(r["l"], HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x)
-	w += pad * 2.0 + 26.0
-	var h := rows.size() * line_h + pad * 2.0
-	var org := Vector2(12.0, size.y - h - 12.0)
-	draw_rect(Rect2(org, Vector2(w, h)), Color(0.06, 0.07, 0.09, 0.72))
-	draw_rect(Rect2(org, Vector2(w, h)), Color(1, 1, 1, 0.10), false, 1.0)
-	var y := org.y + pad + line_h * 0.5
-	for r in rows:
-		var a: float = 1.0 if r["on"] else 0.30
-		var col: Color = Physics.cfg.adj(r["c"])
-		draw_line(Vector2(org.x + pad, y), Vector2(org.x + pad + 18.0, y), Color(col, a), 3.0)
-		draw_string(font, Vector2(org.x + pad + 26.0, y + 4.0), r["l"],
-			HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(Color("e8eaed"), a))
-		y += line_h
+		_draw_arrow(ball_px, ball_px + scr, arr["c"], arr["l"], arr["w"])
 
 ## HIZ vektörü + BİLEŞENLERİ. vx (yatay) ve vy (dikey) ayrı renkli, etiketli
 ## oklardır: hava direnci seçilmediğinde vx okunun boyu HİÇ DEĞİŞMEZ,
@@ -690,7 +653,7 @@ func _draw_velocity(ball_px: Vector2, vel: Vector2) -> void:
 	var scr := Vector2(vel.x, -vel.y) * VEL_SCALE
 	if scr.length() > VEL_MAX:
 		scr = scr.normalized() * VEL_MAX
-	_draw_arrow(ball_px, ball_px + scr, Physics.cfg.adj(C_VEL), "v  %.0f m/s" % vel.length(), Physics.cfg.adj_width(4.0))
+	_draw_arrow(ball_px, ball_px + scr, C_VEL, "v", 5.0)
 
 func _draw_speed_readout(ball_px: Vector2, vel: Vector2) -> void:
 	if apex_flash <= 0.0:
@@ -714,56 +677,21 @@ func _draw_speed_readout(ball_px: Vector2, vel: Vector2) -> void:
 	draw_string(font, bp2 + Vector2(10, 38), l2, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(C_VY, a))
 	draw_string(font, bp2 + Vector2(10, 57), l3, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color("2563eb", a))
 
-## `used` verilirse: etiket rozeti daha önce yerleştirilmiş rozetlerle
-## çakışmayacak şekilde aşağı kaydırılır ve kendi dikdörtgenini listeye ekler.
-func _draw_arrow(from: Vector2, to: Vector2, col: Color, label: String, w := 4.0, thin := false, used: Array = []) -> void:
+func _draw_arrow(from: Vector2, to: Vector2, col: Color, label: String, w := 4.0, thin := false) -> void:
 	var dir := (to - from).normalized()
 	var n := Vector2(-dir.y, dir.x)
 	var h := (7.0 + w * 1.7) * Physics.cfg.arrow_head_ratio
 	if not thin:
-		var oa := Physics.cfg.arrow_outline_alpha
-		draw_line(from, to, Color(0, 0, 0, oa), w + 3.0)
-		draw_colored_polygon(PackedVector2Array([to + dir * 2.0, to - dir * h + n * (h * 0.6 + 1.8), to - dir * h - n * (h * 0.6 + 1.8)]), Color(0, 0, 0, oa))
+		draw_line(from, to, Color(0, 0, 0, 0.40), w + 3.0)
+		draw_colored_polygon(PackedVector2Array([to + dir * 2.0, to - dir * h + n * (h * 0.6 + 1.8), to - dir * h - n * (h * 0.6 + 1.8)]), Color(0, 0, 0, 0.40))
 	draw_line(from, to, col, w)
 	draw_colored_polygon(PackedVector2Array([to, to - dir * h + n * h * 0.6, to - dir * h - n * h * 0.6]), col)
-	if label == "":
-		return
-	var f := get_theme_default_font()
-	if f == null:
-		return
-	var fs: int = Physics.cfg.arrow_label_size
-	var ts := f.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
-	var padx := 7.0
-	var pady := 4.0
-	var bw := ts.x + padx * 2.0
-	var bh := ts.y + pady * 2.0
-	var lp := to + dir * 14.0
-	# rozeti ekran içinde tut
-	lp.x = clampf(lp.x - bw * 0.5, 4.0, maxf(size.x - bw - 4.0, 4.0))
-	lp.y = clampf(lp.y - bh * 0.5, 4.0, maxf(size.y - bh - 4.0, 4.0))
-	var rect := Rect2(lp, Vector2(bw, bh))
-	# çakışan rozetleri aşağı kaydır (aynı anda 3 kuvvet açıkken okunur kalsın)
-	var guard := 0
-	while guard < 8:
-		var moved := false
-		for r in used:
-			if rect.intersects(r):
-				rect.position.y = r.position.y + r.size.y + 4.0
-				moved = true
-		if not moved:
-			break
-		guard += 1
-	used.append(rect)
-	if Physics.cfg.arrow_label_badge:
-		# dolu renkli rozet + koyu metin: hem çim hem gökyüzü üzerinde okunur
-		draw_rect(rect, Color(0, 0, 0, 0.55))
-		draw_rect(Rect2(rect.position, rect.size), col, false, 2.0)
-		draw_string(f, rect.position + Vector2(padx, bh - pady - 2.0), label,
-			HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col)
-	else:
-		var tp := rect.position + Vector2(padx, bh - pady - 2.0)
-		draw_string(f, tp + Vector2(1, 1), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0, 0, 0, 0.85))
-		draw_string(f, tp, label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col)
+	if label != "":
+		var f := get_theme_default_font()
+		if f:
+			var lp := to + dir * 12 + Vector2(2, -2)
+			draw_string(f, lp + Vector2(1, 1), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1, 1, 1, 0.85))
+			draw_string(f, lp, label, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, col)
 
 func _load_frames(dir: String, n: int) -> Array:
 	var out: Array = []

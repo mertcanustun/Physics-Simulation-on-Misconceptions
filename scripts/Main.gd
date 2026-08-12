@@ -17,7 +17,7 @@ var attempt := 0
 var official := false
 var v0 := Physics.cfg.v0          # SABİT — kullanıcı değiştiremez (Inspector'dan ayarlanır)
 var angle := Physics.cfg.angle_deg  # SABİT
-
+var kick_force := Physics.cfg.impetus_acc   # SABİT (yanılgı kuvvetinin büyüklüğü)
 
 var field: FieldView
 var entry_center: CenterContainer
@@ -30,11 +30,9 @@ var admin_status: Label
 var btn_activate: Button
 var btn_stop: Button
 var kick_panel: PanelContainer
-var intro_panel: PanelContainer
-var admin_panel: PanelContainer
-var entry_panel: PanelContainer
-var result_panel: PanelContainer
 var kick_center: CenterContainer
+var kick_scroll: ScrollContainer   # soru paneli ekrana sığmazsa içerik kaydırılır
+var kick_body: VBoxContainer
 var intro_modal_center: CenterContainer
 var q_intro: Label
 var q_hint: Label
@@ -59,13 +57,15 @@ var cb_kick: CheckBox
 var cb_air: CheckBox
 var kick_box: VBoxContainer
 var control_bar: PanelContainer
-var btn_replay: Button
-var btn_change: Button
+var btn_finish: Button       # sonuç kutusu: "Simülasyonu Bitir" (yalnız GOL ekranında)
+var btn_change: Button       # sonuç kutusu: "Kuvvetleri Değiştir"
+var thanks_center: CenterContainer
+var btn_anim: Button         # alt çubuk: giriş animasyonu aç/kapa
+var btn_sound: Button        # alt çubuk: ses aç/kapa
+var anim_enabled := true     # her soru öncesi koşu-vuruş animasyonu oynasın mı
+var sound_enabled := true
 var btn_pause: Button
 var btn_reset: Button
-var btn_mute: Button
-var muted := false
-var master_db := 0.0     # açılıştaki Master bus seviyesi — sesi geri açarken buraya dönülür
 var sim_paused := false
 var decision_started := 0.0   # soru gösterildiği an (karar süresi ölçümü)
 var sfx_kick: AudioStreamPlayer
@@ -76,7 +76,18 @@ var events_dialog: FileDialog
 @onready var Tele: Node = get_node("/root/Telemetry")
 @onready var S: StringsData = get_node("/root/Strings")   # KOD YAZMADAN düzenlenebilir metinler (bkz. Strings.gd)
 
+## Hangi build'in çalıştığını tarayıcı konsolundan (F12) tek bakışta anlamak için.
+## "Dağıttım ama eski sürümü mü görüyorum?" sorusunu bitirir. Yeni bir dağıtım
+## yaparken bu satırı güncelle.
+const BUILD_ID := "2026-08-12c"
+
+## Modal panellerin kullanabileceği dikey alanı belirleyen paylar (px).
+const TOP_BAR_H := 56.0
+const BOTTOM_BAR_H := 96.0
+
 func _ready() -> void:
+	print("=== kicked-ball build %s | metin: %d anahtar (%s) | impetus_acc=%s drag_k=%s goal_x=%s ==="
+		% [BUILD_ID, S.count(), S.source_name(), Physics.cfg.impetus_acc, Physics.cfg.drag_k, Physics.cfg.goal_x])
 	_build_header()
 	_build_field()
 	_build_entry_panel()
@@ -85,15 +96,11 @@ func _ready() -> void:
 	_build_intro_modal()
 	_build_hud()
 	_build_result_modal()
+	_build_thanks_modal()
 	_build_control_bar()
 	_build_save_dialog()
-	# başlangıç ses durumu: sim_config.tres -> Ses -> Sound Enabled
-	var mbus := AudioServer.get_bus_index("Master")
-	master_db = AudioServer.get_bus_volume_db(mbus if mbus >= 0 else 0)
-	_set_sound_enabled(Physics.cfg.sound_enabled)
+	resized.connect(_fit_question_panel)
 	_show_entry()
-	_apply_responsive_layout()
-	resized.connect(_apply_responsive_layout)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and event.keycode == KEY_F8:
@@ -121,39 +128,6 @@ const ACCENT := Color("22c55e")
 const ACCENT_DK := Color("16a34a")
 const DANGER := Color("ef4444")
 const INFO := Color("3b82f6")
-
-## Panel genişliği: geniş ekranda istenen ölçü, dar (mobil) ekranda ekrana sığar.
-func _panel_w(want: float) -> float:
-	return minf(want, maxf(size.x - 32.0, 240.0))
-
-## Kart konumları/genişlikleri ekran boyutuna göre yeniden hesaplanır.
-## Mobil (dar/dikey) ekranda: yan kartlar daralır, kontrol çubuğu küçülür.
-func _apply_responsive_layout() -> void:
-	var narrow := size.x < 900.0
-	if hud_card:
-		hud_card.custom_minimum_size.x = 206.0 if not narrow else clampf(size.x * 0.42, 150.0, 206.0)
-		hud_card.position = Vector2(12 if narrow else 24, 62 if narrow else 78)
-	for pnl in [kick_panel, result_panel, entry_panel, admin_panel, intro_panel]:
-		if pnl:
-			pnl.custom_minimum_size.x = _panel_w(520.0)
-	if control_bar:
-		control_bar.offset_bottom = -4
-	if q_intro:
-		q_intro.custom_minimum_size.x = _panel_w(520.0) - 40.0
-	for b in [btn_start, btn_pause, btn_reset, btn_mute]:
-		if b:
-			b.custom_minimum_size.y = 44.0 if narrow else 40.0
-	# MADDE 3 — ÇAKIŞMA: soru/sonuç kutuları ekranın TAM ortasına yerleşiyordu;
-	# panel uzayınca (3 kuvvet satırı + açıklama) alt kontrol çubuğunun ÜSTÜNE
-	# biniyordu. Artık ortalama alanı üstte başlık çubuğunun, altta kontrol
-	# çubuğunun BİTTİĞİ yerden hesaplanıyor -> asla üst üste gelmezler.
-	var bar_h := control_bar.size.y if control_bar else 0.0
-	if bar_h <= 0.0:
-		bar_h = 56.0
-	for c in [kick_center, result_center, intro_modal_center]:
-		if c:
-			c.offset_top = 56.0
-			c.offset_bottom = -(bar_h + 16.0)
 
 func _card_style(radius := 16, bg := CARD, border := Color(1, 1, 1, 0.07)) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
@@ -208,7 +182,7 @@ func _build_header() -> void:
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 12)
 	top_bar.add_child(h)
-	h.add_child(_label("⚽  Kicked-Ball Simulation", 18, TXT))
+	h.add_child(_label("Kicked-Ball Simulation", 18, TXT))
 	header_sub = _label("", 13, TXT_MUTED)
 	h.add_child(header_sub)
 
@@ -232,7 +206,7 @@ func _build_hud() -> void:
 	v.add_child(_label("···  gerçek yol (hayalet)", 12, Physics.cfg.real_path_color))
 	v.add_child(_spacer(8))
 	v.add_child(_label("TOPUN HIZI", 11, TXT_MUTED))
-	hud_speed = _label("0.0 m/s", 30, ACCENT)
+	hud_speed = _label("0.0 m/s", 15, ACCENT)
 	v.add_child(hud_speed)
 	hud_vx = _label("vx (yatay) 0.0 m/s", 13, Color("f59e0b"))
 	v.add_child(hud_vx)
@@ -245,7 +219,7 @@ func _on_speed_report(sp: float, vx: float, vy: float) -> void:
 	if hud_vx:
 		# yatay hız: hava direnci yoksa DEĞİŞMEZ -> "sabit" etiketi bunu görünür kılar
 		var steady := absf(vx - last_vx) < 0.05 and last_vx > -900.0
-		hud_vx.text = "vx (yatay) %.1f m/s%s" % [vx, "   · sabit" if steady else ""]
+		hud_vx.text = "vx (yatay) %.1f m/s" % vx
 		hud_vx.add_theme_color_override("font_color", ACCENT if steady else Color("f59e0b"))
 		last_vx = vx
 	if hud_vy:
@@ -256,23 +230,46 @@ func _on_speed_report(sp: float, vx: float, vy: float) -> void:
 func _build_kick_panel() -> void:
 	kick_center = CenterContainer.new()
 	kick_center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	# Ortalama alanı ÜST ÇUBUK ile ALT KONTROL ÇUBUĞU arasına daraltılır.
+	# Aksi hâlde panel ekranın tam ortasına göre hizalanır ve uzun metinde
+	# alt kenarı kontrol çubuğunun arkasında kalır. Bu offset'lerle mevcut
+	# dikey alanın TAMAMI kullanılabiliyor (üstte boşa giden yer kalmıyor).
+	kick_center.offset_top = TOP_BAR_H
+	kick_center.offset_bottom = -BOTTOM_BAR_H
 	add_child(kick_center)
 	kick_panel = PanelContainer.new()
 	kick_panel.add_theme_stylebox_override("panel", _card_style(18))
-	kick_panel.custom_minimum_size = Vector2(_panel_w(520.0), 0)
+	kick_panel.custom_minimum_size = Vector2(520, 0)
 	kick_center.add_child(kick_panel)
+	# Metinler CSV'den geldiği için uzunlukları değişebilir; uzun metin paneli
+	# taşırıp yeşil düğmeyi alt kontrol çubuğunun ARKASINA itiyordu. Yapı:
+	#   PanelContainer
+	#     └ VBox (dış)
+	#         ├ ScrollContainer  -> başlık + metin + kuvvet kutuları (gerekirse kayar)
+	#         └ q_run_btn        -> HER ZAMAN görünür, kaymaz (sabitlenmiş)
+	# Böylece metin ne kadar uzarsa uzasın "Ne olacağını gör" düğmesi ekranda kalır.
+	var outer := VBoxContainer.new()
+	outer.add_theme_constant_override("separation", 10)
+	kick_panel.add_child(outer)
+	kick_scroll = ScrollContainer.new()
+	kick_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	kick_scroll.follow_focus = true
+	kick_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	outer.add_child(kick_scroll)
 	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 10)
-	kick_panel.add_child(v)
-	v.add_child(_label(S.t("KICK_PANEL_TITLE"), 24, TXT))
+	v.add_theme_constant_override("separation", 8)
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	kick_scroll.add_child(v)
+	kick_body = v
+	v.add_child(_label(S.t("KICK_PANEL_TITLE"), 22, TXT))
 	mode_banner = _label("", 11, Color("f59e0b"))
 	v.add_child(mode_banner)
-	q_intro = _label(S.t("KICK_PANEL_INTRO"), 14, TXT_MUTED)
+	q_intro = _label(S.t("KICK_PANEL_INTRO"), 13, TXT_MUTED)
 	q_intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	q_intro.custom_minimum_size.x = 480
 	v.add_child(q_intro)
 	v.add_child(_spacer(2))
-	var question_lbl := _label(S.t("KICK_PANEL_QUESTION"), 17, TXT)
+	var question_lbl := _label(S.t("KICK_PANEL_QUESTION"), 16, TXT)
 	question_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	question_lbl.custom_minimum_size.x = 480
 	v.add_child(question_lbl)
@@ -286,13 +283,13 @@ func _build_kick_panel() -> void:
 	kick_box.visible = false
 	v.add_child(kick_box)
 	cb_air = _force_box(v, "air", S.t("FORCE_AIR_TITLE"), S.t("FORCE_AIR_SUB"))
-	v.add_child(_spacer(8))
+	# --- SABİT (kaymayan) alt kısım ---
 	q_run_btn = Button.new()
 	q_run_btn.text = S.t("KICK_PANEL_RUN_BTN")
 	q_run_btn.custom_minimum_size = Vector2(480, 46)
 	_style_button(q_run_btn, ACCENT_DK, Color.WHITE)
 	q_run_btn.pressed.connect(_on_run)
-	v.add_child(q_run_btn)
+	outer.add_child(q_run_btn)
 
 ## ------------------- "NASIL ÇALIŞIR?" GİRİŞ POPUP'I (simülasyon başlamadan önce) -------------------
 ## Futbolcu koşup gelmeden, hatta saha görünür olmadan HEMEN önce çıkar; "Devam
@@ -303,7 +300,6 @@ func _build_intro_modal() -> void:
 	intro_modal_center.visible = false
 	add_child(intro_modal_center)
 	var panel := PanelContainer.new()
-	intro_panel = panel
 	panel.add_theme_stylebox_override("panel", _card_style(18))
 	panel.custom_minimum_size = Vector2(520, 0)
 	intro_modal_center.add_child(panel)
@@ -350,7 +346,7 @@ func _force_box(parent: VBoxContainer, key: String, display_title: String, sub: 
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 1)
 	h.add_child(v)
-	var title_lbl := _label(display_title, 15, TXT)
+	var title_lbl := _label(display_title, 14, TXT)
 	title_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	title_lbl.custom_minimum_size.x = 420
 	v.add_child(title_lbl)
@@ -379,7 +375,6 @@ func _build_result_modal() -> void:
 	result_center.visible = false
 	add_child(result_center)
 	var panel := PanelContainer.new()
-	result_panel = panel
 	panel.add_theme_stylebox_override("panel", _card_style(18))
 	panel.custom_minimum_size = Vector2(520, 0)
 	result_center.add_child(panel)
@@ -412,18 +407,58 @@ func _build_result_modal() -> void:
 	row.add_theme_constant_override("separation", 12)
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	v.add_child(row)
-	btn_replay = Button.new()
-	btn_replay.text = "Tekrar dene"
-	btn_replay.custom_minimum_size = Vector2(200, 46)
-	_style_button(btn_replay, CARD2, TXT, Color(1, 1, 1, 0.10))
-	btn_replay.pressed.connect(_on_replay)
-	row.add_child(btn_replay)
+	# SOL: "Simülasyonu Bitir" — YALNIZCA başarılı (GOL) ekranında görünür.
+	# Başarısız ekranda tek buton kalır: "Kuvvetleri Değiştir".
+	btn_finish = Button.new()
+	btn_finish.text = S.t("RESULT_BTN_FINISH")
+	btn_finish.custom_minimum_size = Vector2(200, 46)
+	_style_button(btn_finish, CARD2, TXT, Color(1, 1, 1, 0.10))
+	btn_finish.pressed.connect(_on_finish_sim)
+	row.add_child(btn_finish)
 	btn_change = Button.new()
-	btn_change.text = "Yeni cevap dene"
+	btn_change.text = S.t("RESULT_BTN_CHANGE")
 	btn_change.custom_minimum_size = Vector2(220, 46)
 	_style_button(btn_change, ACCENT_DK, Color.WHITE)
 	btn_change.pressed.connect(_on_change_answer)
 	row.add_child(btn_change)
+
+## ------------------- TEŞEKKÜR EKRANI (Simülasyonu Bitir) -------------------
+## "Simülasyonu Bitir"e basılınca çıkar; geri dönüş yolu YOK — katılımcı için
+## simülasyon burada biter, cihazı görevliye teslim eder. Görevli yeni katılımcı
+## için sayfayı yeniler (web) veya F5 ile yeniden başlatır.
+func _build_thanks_modal() -> void:
+	thanks_center = CenterContainer.new()
+	thanks_center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	thanks_center.visible = false
+	add_child(thanks_center)
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", _card_style(18))
+	panel.custom_minimum_size = Vector2(520, 0)
+	thanks_center.add_child(panel)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 14)
+	v.alignment = BoxContainer.ALIGNMENT_CENTER
+	panel.add_child(v)
+	var t := _label(S.t("THANKS_TITLE"), 24, ACCENT)
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(t)
+	var b := _label(S.t("THANKS_BODY"), 14, TXT_MUTED)
+	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	b.custom_minimum_size.x = 480
+	b.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(b)
+
+## Katılımcı için son ekran. Oturum kapatılır, veri yazımı durur; alt kontrol
+## çubuğu ve soru paneli gizlenir ki geri dönüp yeni deneme yapılamasın.
+func _on_finish_sim() -> void:
+	Tele.run_finish_pressed()
+	Tele.end_session()
+	_stop_wind()
+	result_center.visible = false
+	kick_center.visible = false
+	control_bar.visible = false
+	hud_card.visible = false
+	thanks_center.visible = true
 
 ## ------------------- ALT KONTROL ÇUBUĞU -------------------
 func _build_control_bar() -> void:
@@ -437,40 +472,71 @@ func _build_control_bar() -> void:
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 10)
 	control_bar.add_child(h)
-	# "Vuruşu başlat" KALDIRILDI — atışı başlatan tek yer soru kutusundaki
-	# yeşil düğme (aynı işi yapan ikinci düğme kafa karıştırıyordu).
-	# Yerine: TEKRAR = son atışı yeniden oynat (uçuş bittikten sonra aktif).
-	# MADDE 3 — düğme metinleri: her düğme YAPTIĞI İŞİ söylüyor, tooltip'lerde
-	# uzun açıklama var. "Vuruşu başlat" kaldırıldı (yukarıdaki nota bak) —
-	# yerinde duran düğme son atışı YENİDEN OYNATIR, adı da bu yüzden "Tekrar".
 	btn_start = Button.new()
-	btn_start.text = "↻  Tekrar"
-	btn_start.tooltip_text = "Son atışı baştan oynat (yeni cevap seçmez)"
-	btn_start.custom_minimum_size = Vector2(0, 40)
+	btn_start.text = S.t("CTRL_REPLAY")
+	btn_start.custom_minimum_size = Vector2(160, 40)
 	_style_button(btn_start, ACCENT_DK, Color.WHITE)
-	btn_start.disabled = true
-	btn_start.pressed.connect(_on_replay)
+	btn_start.pressed.connect(_on_replay_or_run)
 	h.add_child(btn_start)
 	btn_pause = Button.new()
-	btn_pause.text = "⏸  Durdur"
-	btn_pause.tooltip_text = "Uçuşu dondur / kaldığı yerden devam ettir"
-	btn_pause.custom_minimum_size = Vector2(0, 40)
+	btn_pause.text = S.t("CTRL_PAUSE")
+	btn_pause.custom_minimum_size = Vector2(120, 40)
 	_style_button(btn_pause, CARD2, DANGER, Color(DANGER, 0.55))
 	btn_pause.pressed.connect(_on_pause_toggle)
 	h.add_child(btn_pause)
 	btn_reset = Button.new()
-	btn_reset.text = "↺  Sıfırla"
-	btn_reset.tooltip_text = "Sahayı temizle ve soru ekranına dön"
-	btn_reset.custom_minimum_size = Vector2(0, 40)
+	btn_reset.text = S.t("CTRL_RESET")
+	btn_reset.custom_minimum_size = Vector2(120, 40)
 	_style_button(btn_reset, CARD2, INFO, Color(INFO, 0.55))
 	btn_reset.pressed.connect(_on_reset_sim)
 	h.add_child(btn_reset)
-	# ---------- MADDE 11/16: SESLERİ AÇ/KAPAT ----------
-	btn_mute = Button.new()
-	btn_mute.custom_minimum_size = Vector2(0, 40)
-	_style_button(btn_mute, CARD2, TXT, Color(1, 1, 1, 0.18))
-	btn_mute.pressed.connect(_on_mute_toggle)
-	h.add_child(btn_mute)
+	# --- AYARLAR: giriş animasyonu ve ses aç/kapa ---
+	btn_anim = Button.new()
+	btn_anim.custom_minimum_size = Vector2(150, 40)
+	btn_anim.pressed.connect(_on_toggle_anim)
+	h.add_child(btn_anim)
+	btn_sound = Button.new()
+	btn_sound.custom_minimum_size = Vector2(120, 40)
+	btn_sound.pressed.connect(_on_toggle_sound)
+	h.add_child(btn_sound)
+	_refresh_toggle_buttons()
+
+## Alt çubuktaki "Tekrar": uçuş BİTTİYSE aynı seçimi yeniden oynatır (yeni bir
+## deneme KAYDEDİLMEZ — araştırma verisi şişmesin); henüz uçuş yoksa normal
+## atışı başlatır. Eskiden bu düğme her basışta _on_run çağırıyordu.
+func _on_replay_or_run() -> void:
+	if field and field.finished:
+		_on_replay()
+	else:
+		_on_run()
+
+## Giriş (koşu-vuruş) animasyonu her soru öncesi oynasın mı?
+## Kapalıyken soru paneli doğrudan açılır — tekrar tekrar deneyen katılımcı
+## her seferinde animasyonu beklemek zorunda kalmaz.
+func _on_toggle_anim() -> void:
+	anim_enabled = not anim_enabled
+	Tele.param_change("intro_animation", anim_enabled)
+	_refresh_toggle_buttons()
+
+## Tüm ses efektleri (vuruş, alkış, rüzgar) tek düğmeden susturulur.
+func _on_toggle_sound() -> void:
+	sound_enabled = not sound_enabled
+	Tele.param_change("sound", sound_enabled)
+	if not sound_enabled:
+		for p in [sfx_kick, sfx_goal, sfx_wind]:
+			if p and p.playing:
+				p.stop()
+	_refresh_toggle_buttons()
+
+func _refresh_toggle_buttons() -> void:
+	if btn_anim:
+		btn_anim.text = S.t("CTRL_ANIM_ON") if anim_enabled else S.t("CTRL_ANIM_OFF")
+		_style_button(btn_anim, CARD2, ACCENT if anim_enabled else TXT_MUTED,
+			Color(ACCENT if anim_enabled else TXT_MUTED, 0.55))
+	if btn_sound:
+		btn_sound.text = S.t("CTRL_SOUND_ON") if sound_enabled else S.t("CTRL_SOUND_OFF")
+		_style_button(btn_sound, CARD2, ACCENT if sound_enabled else TXT_MUTED,
+			Color(ACCENT if sound_enabled else TXT_MUTED, 0.55))
 
 ## SORU PANELİ: seçim aşamasında ORTADA (büyük), atış başlayınca SOLA sabitlenir
 ## (kaybolmaz — öğrenci ne seçtiğini uçuş boyunca görebilir).
@@ -478,15 +544,29 @@ func _center_question() -> void:
 	if kick_panel.get_parent() != kick_center:
 		kick_panel.get_parent().remove_child(kick_panel)
 		kick_center.add_child(kick_panel)
-	kick_panel.custom_minimum_size = Vector2(_panel_w(520.0), 0)
+	kick_panel.custom_minimum_size = Vector2(520, 0)
 	q_intro.visible = true
 	q_run_btn.visible = true
 	q_hint.visible = false
 	_set_force_rows_enabled(true)
 	kick_center.visible = true
 	btn_start.visible = true
-	btn_start.disabled = true   # Tekrar: henüz oynatılacak atış yok
+	btn_start.disabled = false
 	_update_choice_summary()
+	_fit_question_panel()
+
+## Soru panelinin yüksekliğini pencereye göre sınırlar. Alt kontrol çubuğu ve
+## üst çubuk için yer bırakır; içerik sığmazsa ScrollContainer devreye girer.
+## Hem pencere yeniden boyutlandığında hem panel açılırken çağrılır.
+func _fit_question_panel() -> void:
+	if kick_scroll == null or kick_body == null:
+		return
+	# kick_center zaten üst/alt çubuk payları kadar daraltıldı, dolayısıyla
+	# burada yalnızca panelin kendi iç boşlukları ve sabit düğme düşülür.
+	var panel_pad := 40.0 + 56.0                # panel iç boşlukları + sabit düğme
+	var avail := maxf(size.y - TOP_BAR_H - BOTTOM_BAR_H - panel_pad, 220.0)
+	var needed := kick_body.get_combined_minimum_size().y
+	kick_scroll.custom_minimum_size.y = minf(needed, avail)
 
 ## Atış başlayınca soru kutusu ("Top havada") ekrandan kalkar; öğrencinin
 ## seçimi kaybolmaz — sol HUD kartında özet satır olarak görünmeye devam eder.
@@ -506,7 +586,7 @@ func _hide_question() -> void:
 	if kick_panel.get_parent() != kick_center:
 		kick_panel.get_parent().remove_child(kick_panel)
 		kick_center.add_child(kick_panel)
-	kick_panel.custom_minimum_size = Vector2(_panel_w(520.0), 0)
+	kick_panel.custom_minimum_size = Vector2(520, 0)
 	btn_start.visible = true
 	btn_start.disabled = true          # uçuş sırasında atış yapılamaz
 	_update_choice_summary()
@@ -528,60 +608,20 @@ func _set_force_rows_enabled(on: bool) -> void:
 		if cb:
 			cb.disabled = not on
 
-## MADDE 16 — ses düğmesi tek yönlü çalışıyordu (kapanıyor, tekrar açılmıyordu).
-## İki sebep vardı:
-##   a) Yalnızca `AudioServer.set_bus_mute` kullanılıyordu; web (HTML5) export'ta
-##      tarayıcı AudioContext'i askıya alındıktan sonra bu bayrağın geri
-##      alınması her zaman sesi geri getirmiyor.
-##   b) Sesi kapatınca çalan oynatıcılar (özellikle döngüdeki rüzgâr) durmuyor,
-##      geri açınca da yeniden başlatılmıyordu.
-## Çözüm: mute bayrağı + bus SEVİYESİ birlikte ayarlanıyor, oynatıcılar açıkça
-## durdurulup geri açılınca uçuş sürüyorsa rüzgâr yeniden başlatılıyor. Düğme
-## metni her seferinde GERÇEK duruma göre yazılıyor (tek doğruluk kaynağı).
-func _set_sound_enabled(on: bool) -> void:
-	muted = not on
-	var bus := AudioServer.get_bus_index("Master")
-	if bus < 0:
-		bus = 0
-	AudioServer.set_bus_mute(bus, muted)
-	AudioServer.set_bus_volume_db(bus, -80.0 if muted else master_db)
-	if muted:
-		for pl in [sfx_kick, sfx_goal, sfx_wind]:
-			if pl and pl.playing:
-				pl.stop()
-	elif field and field.playing:
-		# ses geri açıldı ve top hâlâ uçuyor -> rüzgâr kaldığı yerden devam etsin
-		if sfx_wind and sfx_wind.stream and not sfx_wind.playing:
-			sfx_wind.play()
-	if btn_mute:
-		btn_mute.text = "🔇 Sesler kapalı" if muted else "🔊 Sesler açık"
-		btn_mute.tooltip_text = "Tüm ses efektlerini aç/kapat"
-
-func _on_mute_toggle() -> void:
-	_set_sound_enabled(muted)   # muted=true iken AÇ, false iken KAPAT
-
 func _on_pause_toggle() -> void:
 	sim_paused = not sim_paused
 	field.set_paused(sim_paused)
-	btn_pause.text = "▶  Devam et" if sim_paused else "⏸  Durdur"
+	btn_pause.text = S.t("CTRL_RESUME") if sim_paused else S.t("CTRL_PAUSE")
 
 func _on_reset_sim() -> void:
 	sim_paused = false
 	field.set_paused(false)
-	btn_pause.text = "⏸  Durdur"
+	btn_pause.text = S.t("CTRL_PAUSE")
 	result_center.visible = false
 	_stop_wind()
 	field.reset()
 	_reset_hud_values()
-	Tele.decision_start(attempt + 1)
-	if Physics.cfg.intro_before_each_question:
-		# Inspector: sim_config.tres -> Zamanlama -> Intro Before Each Question
-		kick_center.visible = false
-		field.start_intro()          # soru, _on_intro_done içinde açılacak
-	else:
-		_center_question()
-	decision_started = Time.get_ticks_msec() / 1000.0
-	_update_preview()
+	_back_to_question()
 
 func _build_field() -> void:
 	field = FieldView.new()
@@ -607,14 +647,13 @@ func _build_entry_panel() -> void:
 	entry_center.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(entry_center)
 	var panel := PanelContainer.new()
-	entry_panel = panel
 	panel.add_theme_stylebox_override("panel", _panel_style())
 	panel.custom_minimum_size = Vector2(460, 0)
 	entry_center.add_child(panel)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 8)
 	panel.add_child(v)
-	v.add_child(_label("⚽  Kicked-Ball Simulation", 26, TXT))
+	v.add_child(_label("Kicked-Ball Simulation", 26, TXT))
 	v.add_child(_label("Kuvvet ve Hareket · kavramsal değişim prototipi (Simülasyon 1)", 13, TXT_MUTED))
 	v.add_child(_spacer(10))
 	v.add_child(_label("Kod", 15, TXT))
@@ -644,7 +683,6 @@ func _build_admin_panel() -> void:
 	admin_center.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(admin_center)
 	var panel := PanelContainer.new()
-	admin_panel = panel
 	panel.add_theme_stylebox_override("panel", _panel_style())
 	panel.custom_minimum_size = Vector2(520, 0)
 	admin_center.add_child(panel)
@@ -767,6 +805,7 @@ func _show_entry() -> void:
 	admin_center.visible = false
 	kick_center.visible = false
 	intro_modal_center.visible = false
+	thanks_center.visible = false
 	control_bar.visible = false
 	field.visible = false
 	code_edit.text = ""
@@ -811,6 +850,7 @@ func _on_continue() -> void:
 	mode_banner.add_theme_color_override("font_color", GREEN if official else Color("c2660a"))
 	entry_center.visible = false
 	field.visible = true
+	btn_start.disabled = true      # giriş animasyonu bitmeden atış yok
 	hud_card.visible = true
 	top_bar.visible = true
 	kick_center.visible = false
@@ -822,6 +862,7 @@ func _on_continue() -> void:
 	intro_modal_center.visible = true
 
 func _on_intro_done() -> void:
+	btn_start.disabled = false
 	if field.playing or field.finished:
 		return   # uçuş bir şekilde başladıysa soru kutusunu ÜSTÜNE açma
 	Tele.decision_start(attempt + 1)
@@ -834,7 +875,6 @@ func _on_intro_done() -> void:
 func _build_audio() -> void:
 	sfx_kick = AudioStreamPlayer.new()
 	sfx_kick.stream = Physics.cfg.kick_sfx   # Inspector: sim_config.tres -> Ses -> Kick Sfx
-	sfx_kick.volume_db = Physics.cfg.sfx_volume_db
 	add_child(sfx_kick)
 	sfx_goal = AudioStreamPlayer.new()
 	if ResourceLoader.exists("res://assets/audio/applause.mp3"):
@@ -842,68 +882,28 @@ func _build_audio() -> void:
 	sfx_goal.volume_db = -3.0
 	add_child(sfx_goal)
 	sfx_wind = AudioStreamPlayer.new()
-	sfx_wind.stream = _loopable(Physics.cfg.wind_sfx)   # Inspector: sim_config.tres -> Ses -> Wind Sfx
-	sfx_wind.volume_db = Physics.cfg.wind_volume_db
+	sfx_wind.stream = Physics.cfg.wind_sfx   # Inspector: sim_config.tres -> Ses -> Wind Sfx (boşsa çalmaz)
+	sfx_wind.volume_db = -6.0
 	add_child(sfx_wind)
-	if Physics.cfg.wind_sfx == null:
-		push_warning("Rüzgâr sesi atanmamış: sim_config.tres -> Ses -> Wind Sfx boş. Uçuşta rüzgâr çalmaz.")
-
-## MADDE 10 — Inspector'daki rüzgâr sesi yuvasını GÜVENİLİR hâle getirir.
-## Eski kod iki noktada kırılgandı:
-##   a) Paylaşılan kaynağı (preload edilmiş .tres alanını) YERİNDE değiştiriyordu —
-##      aynı dosyayı başka yerde kullanan herkes etkileniyordu. Artık duplicate().
-##   b) Döngü uzunluğunu `data.size() / 2` ile hesaplıyordu: bu yalnız 16-bit MONO
-##      için doğru. Inspector'dan STEREO ya da 8-bit bir WAV atanırsa döngü yanlış
-##      yerden dönüyor / hiç dönmüyordu. Artık format ve kanal sayısı okunuyor.
-## OGG/MP3 atanırsa `loop` özelliği kullanılır; tanınmayan tür olduğu gibi döner.
-func _loopable(src: AudioStream) -> AudioStream:
-	if src == null:
-		return null
-	if src is AudioStreamWAV:
-		var w: AudioStreamWAV = (src as AudioStreamWAV).duplicate()
-		w.loop_mode = AudioStreamWAV.LOOP_FORWARD
-		w.loop_begin = 0
-		var bpf := 0
-		match w.format:
-			AudioStreamWAV.FORMAT_8_BITS:
-				bpf = 1
-			AudioStreamWAV.FORMAT_16_BITS:
-				bpf = 2
-			_:
-				bpf = 0     # IMA-ADPCM / QOA (sıkıştırılmış): bayt başına kare SABİT DEĞİL
-		if bpf > 0:
-			if w.stereo:
-				bpf *= 2
-			w.loop_end = int(w.data.size() / bpf)
-		else:
-			# Sıkıştırılmış WAV (Godot'un varsayılan QOA içe aktarımı budur):
-			# kare sayısı bayt sayısından türetilemez, süre × örnekleme hızından
-			# hesaplanır. Bu dal olmadan loop_end 0 kalıyor ve döngü çalışmıyordu.
-			w.loop_end = int(round(w.get_length() * float(w.mix_rate)))
-		return w
-	var d := src.duplicate()
-	if "loop" in d:
-		d.set("loop", true)
-	return d
 
 func _on_goal_scored() -> void:
-	if muted:
-		return
-	if sfx_goal and sfx_goal.stream:
+	if sound_enabled and sfx_goal and sfx_goal.stream:
 		sfx_goal.play()
 
 ## Ayak topa değdi (küçük sıçrama, "Top havada" popup'ından HEMEN önce) —
 ## vuruş sesi burada çalar ki top biraz havalanması sesi görsel olarak justify etsin.
 func _on_pre_kick() -> void:
-	if muted:
-		return
-	if sfx_kick and sfx_kick.stream:
+	if sound_enabled and sfx_kick and sfx_kick.stream:
 		sfx_kick.play()
 
 ## Rüzgar sesi: top "uzayda" DEĞİLKEN (in_space=false) uçuş boyunca çalar.
 ## sim_config.tres -> Ses -> Wind Sfx boşsa hiçbir şey yapmaz.
 func _on_altitude_report(_alt_m: float, in_space: bool) -> void:
-	if sfx_wind == null or sfx_wind.stream == null or muted:
+	if sfx_wind == null or sfx_wind.stream == null:
+		return
+	if not sound_enabled:
+		if sfx_wind.playing:
+			sfx_wind.stop()
 		return
 	if in_space:
 		if sfx_wind.playing:
@@ -921,7 +921,7 @@ func _update_preview() -> void:
 	if kick_panel == null or not kick_center.visible:
 		return
 	field.set_preview(cb_gravity.button_pressed, cb_kick.button_pressed,
-		cb_air.button_pressed, Physics.cfg.drag_k, Physics.cfg.impetus_acc)
+		cb_air.button_pressed, Physics.cfg.drag_k, kick_force)
 
 # ------------------------------------------------------------ admin actions
 
@@ -964,7 +964,7 @@ func _on_run() -> void:
 	var a := cb_air.button_pressed
 	var dk := Physics.cfg.drag_k
 	var tx := field.target_x
-	var pred := Physics.simulate(g, k, a, dk, Physics.cfg.impetus_acc, tx, Physics.cfg.ring_bulls)
+	var pred := Physics.simulate(g, k, a, dk, kick_force, tx, Physics.cfg.ring_bulls)
 	var real := Physics.real_path(tx, Physics.cfg.ring_bulls)
 	var correct := g and a and not k
 	var landing_x: float = pred["impact_x"]
@@ -977,15 +977,14 @@ func _on_run() -> void:
 	Tele.answer_submit(g, k, a, correct, category)
 	if official:
 		DataLog.log_attempt(participant_code, group, Codes.has_seen_topic(participant_code),
-			"official", attempt, g, k, a, Physics.cfg.impetus_acc, v0, angle,
+			"official", attempt, g, k, a, kick_force, v0, angle,
 			correct, category, is_goal, landing_x, decision_s)
 		Session.count_attempt(participant_code)
 	_hide_question()
 	sim_paused = false
-	btn_pause.text = "⏸  Durdur"
+	btn_pause.text = S.t("CTRL_PAUSE")
 	field.set_paused(false)
-	btn_start.disabled = true
-	field.set_forces(g, k, a, dk, Physics.cfg.impetus_acc)   # uçuş sırasında canlı kuvvet okları
+	field.set_forces(g, k, a, dk, kick_force)   # uçuş sırasında canlı kuvvet okları
 	# vuruş sesi artık burada değil — küçük sıçrama anında (_on_pre_kick) çalınıyor
 	field.start_flight(pred, real)
 
@@ -1008,15 +1007,17 @@ func _on_flight_finished() -> void:
 		result_sub.text = S.t("RESULT_GOAL_SUB")
 	elif field.impact_x < 0.0:
 		result_title.text = S.t("RESULT_NOLAND_TITLE")
+		result_sub.text = S.t("RESULT_NOLAND_SUB")
 	elif field.impact_x < Physics.cfg.goal_x:
 		result_title.text = S.t("RESULT_SHORT_TITLE")
 		result_sub.text = S.t("RESULT_SHORT_SUB", ["%.1f" % (Physics.cfg.goal_x - field.impact_x)])
 	else:
 		result_title.text = S.t("RESULT_OVER_TITLE")
 		result_sub.text = S.t("RESULT_OVER_SUB", ["%.1f" % (field.impact_x - Physics.cfg.goal_x)])
+	# BAŞARILI ekran: "Simülasyonu Bitir" + "Kuvvetleri Değiştir"
+	# BAŞARISIZ ekran: yalnızca "Kuvvetleri Değiştir"
+	btn_finish.visible = gol
 	result_center.visible = true
-	btn_start.disabled = false   # Tekrar artık oynatılabilir
-	_stop_wind()
 	Tele.run_complete(gol, field.impact_x)
 
 func _on_replay() -> void:
@@ -1026,7 +1027,7 @@ func _on_replay() -> void:
 	var tx := field.target_x
 	field.start_flight(
 		Physics.simulate(cb_gravity.button_pressed, cb_kick.button_pressed,
-			cb_air.button_pressed, dk, Physics.cfg.impetus_acc, tx, Physics.cfg.ring_bulls),
+			cb_air.button_pressed, dk, kick_force, tx, Physics.cfg.ring_bulls),
 		Physics.real_path(tx, Physics.cfg.ring_bulls))
 
 func _on_change_answer() -> void:
@@ -1035,13 +1036,20 @@ func _on_change_answer() -> void:
 	_stop_wind()
 	field.reset()
 	_reset_hud_values()
+	_back_to_question()
+
+## Soru ekranına dönüş — "Kuvvetleri Değiştir" ve "Sıfırla" ortak yolu.
+## "Animasyon: Açık" ise koşu-vuruş girişi yeniden oynar ve soru paneli
+## animasyon bitince (_on_intro_done) açılır; kapalıysa panel hemen açılır ve
+## top doğrudan "vuruş sonrası havada" konumuna alınır.
+func _back_to_question() -> void:
+	if anim_enabled:
+		btn_start.disabled = true
+		field.start_intro()
+		return
+	field.hold_after_kick()
 	Tele.decision_start(attempt + 1)
-	if Physics.cfg.intro_before_each_question:
-		# Inspector: sim_config.tres -> Zamanlama -> Intro Before Each Question
-		kick_center.visible = false
-		field.start_intro()          # soru, _on_intro_done içinde açılacak
-	else:
-		_center_question()
+	_center_question()
 	decision_started = Time.get_ticks_msec() / 1000.0
 	_update_preview()
 
