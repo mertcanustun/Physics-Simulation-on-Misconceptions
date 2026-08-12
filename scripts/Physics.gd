@@ -11,8 +11,7 @@ class_name Physics
 static var cfg: SimConfig = preload("res://config/sim_config.tres")
 
 const DT := 1.0 / 240.0        # entegrasyon adımı — TEKNİK, buraya dokunma
-const MAX_X := 200.0           # ekran güvenlik sınırı — TEKNİK
-const MAX_Y := 400.0           # ekran güvenlik sınırı — TEKNİK
+
 
 ## Kuvvet seçimine göre yörünge. Sekme ve yuvarlanma dahil; top DURUNCA biter,
 ## böylece "havada asılı kalma" hatası oluşmaz.
@@ -73,7 +72,7 @@ static func simulate(gravity: bool, kick: bool, air: bool,
 			pts.append({"p": pos, "v": vel, "t": t})
 			break                                  # TAM DURDU -> yörünge biter
 		pts.append({"p": pos, "v": vel, "t": t})
-		if pos.x > MAX_X or pos.y > MAX_Y:
+		if pos.x > cfg.max_x or pos.y > cfg.max_y:
 			break                                  # ekranı terk etti (yerçekimsiz senaryo)
 	return {
 		"points": pts,

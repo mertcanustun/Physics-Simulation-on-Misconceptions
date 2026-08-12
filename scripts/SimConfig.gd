@@ -34,6 +34,8 @@ extends Resource
 @export_range(10.0, 80.0, 1.0, "suffix:derece") var angle_deg: float = 45.0
 
 @export_group("Sekme / Yuvarlanma / Simülasyon Bitiş Koşulu")
+@export_range(50.0, 1500.0, 10.0, "suffix:m") var max_y: float = 400.0  ## Top bu kadar yükselirse "yere inmedi" (uzaya kaçtı) sayılır
+@export_range(50.0, 1500.0, 10.0, "suffix:m") var max_x: float = 200.0  ## Top yatayda bu kadar uzağa giderse zorla kesilir
 @export_range(0.0, 1.0, 0.01) var restitution: float = 0.34          ## çarpmada dikey hız kaybı (sekme sertliği)
 @export_range(0.0, 1.0, 0.01) var bounce_friction: float = 0.72      ## çarpmada yatay hız kaybı
 @export_range(0.0, 20.0, 0.1, "suffix:m/s²") var roll_friction: float = 6.5   ## yuvarlanma sürtünmesi
@@ -72,12 +74,15 @@ extends Resource
 @export_range(3.0, 40.0, 1.0, "suffix:px") var real_path_dot_gap: float = 9.0     ## noktalar arası boşluk
 
 @export_group("Kamera")
+@export var dynamic_zoom_mode: bool = false   ## Açıkken eski modu (otomatik sığdırma) kapatır; hız ve eşiklere dayalı dinamik zoom sistemini açar.
+@export_range(0.0, 100.0, 1.0, "suffix:m") var altitude_zoom_threshold: float = 25.0  ## Bu yüksekliği (Y) geçince zoom out başlar
+@export_range(0.0, 0.1, 0.001) var altitude_zoom_factor: float = 0.008  ## Vy (dikey hız) başına ne kadar zoom out yapılacağı
+@export_range(0.0, 150.0, 1.0, "suffix:m") var distance_zoom_threshold: float = 40.0  ## Bu yatay mesafeyi (X) geçince zoom out başlar
+@export_range(0.0, 0.1, 0.001) var distance_zoom_factor: float = 0.005  ## Vx (yatay hız) başına ne kadar zoom out yapılacağı
 @export_range(0.5, 3.0, 0.05, "suffix:×") var camera_start_zoom: float = 1.55  ## uçuş başındaki yakınlık
 @export_range(0.05, 1.0, 0.01, "suffix:×") var camera_min_zoom: float = 0.16   ## en uzak (top ekrandan taşmasın)
 @export_range(0.2, 2.0, 0.05, "suffix:×") var camera_max_zoom: float = 1.0     ## en yakın
 @export_range(0.0, 30.0, 0.5, "suffix:m") var camera_margin_m: float = 6.0     ## top kenara bu kadar yaklaşınca kamera uzaklaşmaya başlar
-## Uzaklaşmanın YUMUŞAKLIĞI. Küçük = yavaş/sakin, büyük = sert/hızlı.
-## 5.0 eski (çok hızlı bulunan) değerdi; 2.4 sakin uzaklaşma verir.
 @export_range(0.5, 12.0, 0.1) var camera_zoom_speed: float = 2.4
 
 @export_group("Gökyüzü")
@@ -90,3 +95,4 @@ extends Resource
 
 @export_group("Zamanlama")
 @export_range(0.0, 2.0, 0.02, "suffix:sn") var question_delay_s: float = 0.22   ## ayak topa değdikten kaç sn sonra "Top havada" sorusu çıksın
+@export_range(0.0, 0.99, 0.01) var intro_skip_ratio: float = 0.72   ## tekrarlarda koşunun yüzde kaçı atlansın (0.72 = doğrudan vuruş)

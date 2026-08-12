@@ -15,10 +15,10 @@ var participant_code := ""
 var group := ""
 var attempt := 0
 var official := false
-var v0 := Physics.cfg.v0          # SABİT — kullanıcı değiştiremez (Inspector'dan ayarlanır)
-var angle := Physics.cfg.angle_deg  # SABİT
-var kick_force := Physics.cfg.impetus_acc   # SABİT (yanılgı kuvvetinin büyüklüğü)
-
+var sim_cfg: SimConfig = preload("res://config/sim_config.tres")
+@onready var v0: float = sim_cfg.v0
+@onready var angle: float = sim_cfg.angle_deg
+@onready var kick_force: float = sim_cfg.impetus_acc
 var field: FieldView
 var entry_center: CenterContainer
 var code_edit: LineEdit
@@ -264,7 +264,7 @@ func _build_kick_panel() -> void:
 	v.add_child(_label(S.t("KICK_PANEL_TITLE"), 22, TXT))
 	mode_banner = _label("", 11, Color("f59e0b"))
 	v.add_child(mode_banner)
-	q_intro = _label(S.t("KICK_PANEL_INTRO"), 13, TXT_MUTED)
+	q_intro = _label(S.t("KICK_PANEL_INTRO"), 12, TXT_MUTED)
 	q_intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	q_intro.custom_minimum_size.x = 480
 	v.add_child(q_intro)
@@ -962,13 +962,13 @@ func _on_run() -> void:
 	var g := cb_gravity.button_pressed
 	var k := cb_kick.button_pressed
 	var a := cb_air.button_pressed
-	var dk := Physics.cfg.drag_k
+	var dk: float = Physics.cfg.drag_k
 	var tx := field.target_x
 	var pred := Physics.simulate(g, k, a, dk, kick_force, tx, Physics.cfg.ring_bulls)
 	var real := Physics.real_path(tx, Physics.cfg.ring_bulls)
 	var correct := g and a and not k
 	var landing_x: float = pred["impact_x"]
-	var is_goal := landing_x > 0.0 and absf(landing_x - field.target_x) <= Physics.cfg.ring_bulls
+	var is_goal: bool = landing_x > 0.0 and absf(landing_x - field.target_x) <= Physics.cfg.ring_bulls
 	var category: String = _feedback(g, k, a)[0]
 	var decision_s := maxf(Time.get_ticks_msec() / 1000.0 - decision_started, 0.0)
 	# yalnızca yönetici bu kod için veri toplamayı açtıysa kaydet
@@ -1023,7 +1023,7 @@ func _on_flight_finished() -> void:
 func _on_replay() -> void:
 	Tele.replay()
 	result_center.visible = false
-	var dk := Physics.cfg.drag_k
+	var dk = Physics.cfg.drag_k
 	var tx := field.target_x
 	field.start_flight(
 		Physics.simulate(cb_gravity.button_pressed, cb_kick.button_pressed,
@@ -1045,7 +1045,7 @@ func _on_change_answer() -> void:
 func _back_to_question() -> void:
 	if anim_enabled:
 		btn_start.disabled = true
-		field.start_intro()
+		field.start_intro(true)   # "true" koşuyu atlamasını sağlar
 		return
 	field.hold_after_kick()
 	Tele.decision_start(attempt + 1)

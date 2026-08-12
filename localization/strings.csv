@@ -11,15 +11,16 @@ KICK_PANEL_INTRO,"Futbolcu az önce topa vurdu ve top şu an havada.
 
 Lütfen topa etki ettiğini düşündüğünüz tüm kuvvetleri işaretleyip aşağıdaki yeşil butona tıklayın. Top, tamamen sizin seçtiğiniz kuvvetlere göre hareket edecektir.
 
-Simülasyon akarken soldaki panelden hız değişimini gözlemlemeyi unutmayın. Ekrandaki kesikli çizgi ve soluk renkli top, sonuçları değerlendirebilmeniz için size gerçek yörüngeyi sunar. Hareket tamamlandığında, kendi oluşturduğunuz yörünge ile bu gerçek yörüngeyi kolayca karşılaştırabilirsiniz."
+• Simülasyon akarken soldaki panelden hız değişimini gözlemlemeyi unutmayın.
+• Ekrandaki kesikli çizgi (gerçek yörünge) ile kendi oluşturduğunuz yörüngeyi kolayca karşılaştırabilirsiniz."
 KICK_PANEL_QUESTION,"Topa hangi kuvvetler etki ediyor?"
 KICK_PANEL_RUN_BTN,"Ne olacağını gör"
 FORCE_GRAVITY_TITLE,"Yerçekiminden kaynaklanan aşağı yönlü kuvvet"
-FORCE_GRAVITY_SUB,""
+FORCE_GRAVITY_SUB,
 FORCE_KICK_TITLE,"Vuruştan kaynaklanan hareket yönündeki kuvvet"
-FORCE_KICK_SUB,""
+FORCE_KICK_SUB,
 FORCE_AIR_TITLE,"Hava sürtünmesinden kaynaklanan harekete ters yönde kuvvet"
-FORCE_AIR_SUB,""
+FORCE_AIR_SUB,
 BADGE_GOAL,"TAM İSABET"
 BADGE_MISS,"YÖRÜNGE SAPTI"
 RESULT_DEFAULT_SUB,"Kuvvetler farklı bir yörünge oluşturdu."

@@ -146,6 +146,7 @@ func _ready() -> void:
 	if not sp_idle.is_empty():
 		sp_ref_h = maxf(sp_idle[0]["rect"].size.y, 1.0)
 	target_x = Physics.target_x()
+	Physics.cfg.goal_x = target_x - 2.5
 	# ISINMA: ilk vuruştaki tek karelik takılmayı önler
 	Physics.simulate(true, false, true)
 	var wf := get_theme_default_font()
@@ -263,10 +264,11 @@ func reset() -> void:
 	space_f = 0.0
 	queue_redraw()
 
-func start_intro() -> void:
+func start_intro(skip_run: bool = false) -> void:
 	reset()
 	intro_active = true
-	intro_t = 0.0
+	# Eğer koşu atlanacaksa süreyi Inspector'daki değere göre başlat
+	intro_t = INTRO_DUR * Physics.cfg.intro_skip_ratio if skip_run else 0.0
 	queue_redraw()
 
 func set_paused(v: bool) -> void:
@@ -334,8 +336,33 @@ func _process(delta: float) -> void:
 		altitude_report.emit(trail[-1].y, space_f > 0.5)   # rüzgar sesi: "uzayda" değilken aktif
 		# --- GENEL ZOOM OUT: topun kat ettiği yola göre tüm sahne uzaklaşır ---
 		var bpos := _point_at(predicted, play_t)
-		var prog := clampf(maxf(bpos.x / maxf(fit_maxx, 1.0), bpos.y / maxf(fit_maxy, 1.0)), 0.0, 1.0)
-		var want := lerpf(Physics.cfg.camera_start_zoom, fit_zoom, prog)
+		var vnow := _vel_at(predicted, play_t)
+		var want := Physics.cfg.camera_start_zoom
+		
+		# EKRAN GENİŞLEME SINIRI: Kamera max_x - 10 ve max_y - 10 sınırlarından daha uzağı göstermesin
+		var limit_x := maxf(Physics.cfg.max_x - 10.0, 1.0)
+		var limit_y := maxf(Physics.cfg.max_y - 10.0, 1.0)
+		var avail_h_m := (_ground_y() - 70.0) / _base_scale()
+		var dynamic_min_zoom := maxf(Physics.cfg.camera_min_zoom, minf(DEFAULT_SPAN_M / limit_x, avail_h_m / limit_y))
+		
+		if Physics.cfg.dynamic_zoom_mode:
+			# YENİ MOD: X ve Y eşik mesafelerine kadar sabit, sonrasında hızlara oranla uzaklaş
+			var extra_zoom := 0.0
+			
+			if bpos.y > Physics.cfg.altitude_zoom_threshold:
+				extra_zoom += absf(vnow.y) * Physics.cfg.altitude_zoom_factor
+				
+			if bpos.x > Physics.cfg.distance_zoom_threshold:
+				extra_zoom += absf(vnow.x) * Physics.cfg.distance_zoom_factor
+				
+			# Ne kadar hızlanırsa hızlansın, uzaklaşma dynamic_min_zoom bariyerini delemez
+			want = maxf(Physics.cfg.camera_start_zoom - extra_zoom, dynamic_min_zoom)
+		else:
+			# ESKİ MOD: X ve Y mesafelerinin ikisini de hesaba katarak sığdırma (fit) yap
+			var prog := clampf(maxf(bpos.x / maxf(fit_maxx, 1.0), bpos.y / maxf(fit_maxy, 1.0)), 0.0, 1.0)
+			var safe_fit := maxf(fit_zoom, dynamic_min_zoom)
+			want = lerpf(Physics.cfg.camera_start_zoom, safe_fit, prog)
+			
 		cam_zoom = lerpf(cam_zoom, want, 1.0 - exp(-Physics.cfg.camera_zoom_speed * delta))
 		if not apex_seen and f_gravity and play_t > 0.15 and absf(vel.y) < Physics.cfg.apex_vy \
 				and _point_at(predicted, play_t).y > 2.0:
@@ -768,12 +795,12 @@ func _prekick_index() -> int:
 func _current_player_frame():
 	if intro_active:
 		var p := intro_t / INTRO_DUR
-		if p < 0.72 and not sp_run.is_empty():
+		var skip_r := Physics.cfg.intro_skip_ratio
+		if p < skip_r and not sp_run.is_empty():
 			return sp_run[int(intro_t / 0.09) % sp_run.size()]         # koşu döngüsü
 		elif not sp_kick.is_empty():
 			# koşudan temasa: yalnızca temas karesine KADAR ilerle, orada dur.
-			# (eskiden tüm vuruş dizisi burada bitip IDLE'a zıplıyordu = takılma)
-			var kp := clampf((p - 0.72) / 0.28, 0.0, 1.0)
+			var kp := clampf((p - skip_r) / maxf(1.0 - skip_r, 0.001), 0.0, 1.0)
 			return sp_kick[mini(int(kp * (_prekick_index() + 1)), _prekick_index())]
 	if prekick_active and not sp_kick.is_empty():
 		return sp_kick[_contact_index()]        # ayak topa değdi (küçük sıçrama anı)
@@ -803,4 +830,3 @@ func _draw_player_fallback(feet: Vector2) -> void:
 			if row[c] == ".":
 				continue
 			draw_rect(Rect2(ox + c * ps, oy + r * ps, ps + 0.6, ps + 0.6), _messi_color(row[c]))
-
