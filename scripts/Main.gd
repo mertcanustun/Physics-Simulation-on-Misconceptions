@@ -196,7 +196,7 @@ func _build_hud() -> void:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 4)
 	hud_card.add_child(v)
-	hud_choice = _label("Seçimin: —", 12, Color("cbd5e1"))
+	hud_choice = _label("Seçimin: —", sim_cfg.hud_choice_font_size, Color("cbd5e1"))
 	hud_choice.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hud_choice.custom_minimum_size.x = 190
 	v.add_child(hud_choice)
@@ -596,12 +596,16 @@ func _update_choice_summary() -> void:
 		return
 	var parts := PackedStringArray()
 	if cb_gravity.button_pressed:
-		parts.append(S.t("FORCE_GRAVITY_TITLE"))
+		parts.append("• " + S.t("FORCE_GRAVITY_TITLE"))
 	if cb_kick.button_pressed:
-		parts.append(S.t("FORCE_KICK_TITLE"))
+		parts.append("• " + S.t("FORCE_KICK_TITLE"))
 	if cb_air.button_pressed:
-		parts.append(S.t("FORCE_AIR_TITLE"))
-	hud_choice.text = "Seçimin: " + (", ".join(parts) if parts.size() > 0 else "hiçbir kuvvet")
+		parts.append("• " + S.t("FORCE_AIR_TITLE"))
+		
+	if parts.size() > 0:
+		hud_choice.text = "Seçimin:\n" + "\n".join(parts)
+	else:
+		hud_choice.text = "Seçimin:\n• Hiçbir kuvvet"
 
 func _set_force_rows_enabled(on: bool) -> void:
 	for cb in [cb_gravity, cb_kick, cb_air]:

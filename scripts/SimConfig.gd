@@ -85,6 +85,9 @@ extends Resource
 @export_range(0.0, 30.0, 0.5, "suffix:m") var camera_margin_m: float = 6.0     ## top kenara bu kadar yaklaşınca kamera uzaklaşmaya başlar
 @export_range(0.5, 12.0, 0.1) var camera_zoom_speed: float = 2.4
 
+@export_group("Arayüz (UI)")
+@export_range(8, 32, 1, "suffix:px") var hud_choice_font_size: int = 12  ## Sol üstteki seçilen kuvvetler listesinin yazı boyutu
+
 @export_group("Gökyüzü")
 @export_range(0, 15, 1) var cloud_count: int = 4               ## arka planda kaç bulut olsun (0 = kapalı)
 @export_range(0.0, 60.0, 1.0, "suffix:px/sn") var cloud_speed: float = 8.0   ## bulutların kayma hızı
