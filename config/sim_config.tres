@@ -10,3 +10,4 @@ max_y = 150.0
 max_x = 150.0
 altitude_zoom_threshold = 20.0
 altitude_zoom_factor = 0.018
+hud_choice_font_size = 10
