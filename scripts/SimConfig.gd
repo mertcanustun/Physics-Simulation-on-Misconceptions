@@ -40,7 +40,7 @@ extends Resource
 @export_range(0.0, 1.0, 0.01) var bounce_friction: float = 0.72      ## çarpmada yatay hız kaybı
 @export_range(0.0, 20.0, 0.1, "suffix:m/s²") var roll_friction: float = 6.5   ## yuvarlanma sürtünmesi
 @export_range(0.0, 5.0, 0.05, "suffix:m/s") var rest_vy: float = 1.2         ## bu dikey hızın altında artık sekmez, yuvarlanmaya geçer
-@export_range(1.0, 30.0, 0.5, "suffix:sn") var max_t: float = 16.0           ## yörünge en fazla bu kadar sürer, sonra zorla kesilir
+@export_range(1.0, 120.0, 0.5, "suffix:sn") var max_t: float = 15.0           ## yörünge en fazla bu kadar sürer, sonra zorla kesilir
 
 @export_group("Kale / Gol Koşulu")
 @export_range(0.0, 100.0, 0.5, "suffix:m") var goal_x: float = 34.0          ## kale ön çizgisi — top buraya (+derinlik) düşerse GOL
@@ -74,16 +74,22 @@ extends Resource
 @export_range(3.0, 40.0, 1.0, "suffix:px") var real_path_dot_gap: float = 9.0     ## noktalar arası boşluk
 
 @export_group("Kamera")
-@export var dynamic_zoom_mode: bool = false   ## Açıkken eski modu (otomatik sığdırma) kapatır; hız ve eşiklere dayalı dinamik zoom sistemini açar.
+@export var dynamic_zoom_mode: bool = true   ## Sadece mesafeye (konuma) duyarlı, en pürüzsüz mod
+@export var dynamic_zoom_with_speed: bool = false ## Hıza (Velocity) duyarlı mod (Kıyaslama testi için)
+
 @export_range(0.0, 100.0, 1.0, "suffix:m") var altitude_zoom_threshold: float = 25.0  ## Bu yüksekliği (Y) geçince zoom out başlar
-@export_range(0.0, 0.1, 0.001) var altitude_zoom_factor: float = 0.008  ## Vy (dikey hız) başına ne kadar zoom out yapılacağı
+@export_range(0.0, 0.2, 0.001) var altitude_zoom_factor: float = 0.040  ## NORMAL MOD (Mesafe) dikey çarpanı
+@export_range(0.0, 0.2, 0.001) var altitude_speed_factor: float = 0.035 ## HIZ MODU dikey çarpanı
+
 @export_range(0.0, 150.0, 1.0, "suffix:m") var distance_zoom_threshold: float = 40.0  ## Bu yatay mesafeyi (X) geçince zoom out başlar
-@export_range(0.0, 0.1, 0.001) var distance_zoom_factor: float = 0.005  ## Vx (yatay hız) başına ne kadar zoom out yapılacağı
+@export_range(0.0, 0.2, 0.001) var distance_zoom_factor: float = 0.040  ## NORMAL MOD (Mesafe) yatay çarpanı
+@export_range(0.0, 0.2, 0.001) var distance_speed_factor: float = 0.035 ## HIZ MODU yatay çarpanı
+
 @export_range(0.5, 3.0, 0.05, "suffix:×") var camera_start_zoom: float = 1.55  ## uçuş başındaki yakınlık
 @export_range(0.05, 1.0, 0.01, "suffix:×") var camera_min_zoom: float = 0.16   ## en uzak (top ekrandan taşmasın)
 @export_range(0.2, 2.0, 0.05, "suffix:×") var camera_max_zoom: float = 1.0     ## en yakın
 @export_range(0.0, 30.0, 0.5, "suffix:m") var camera_margin_m: float = 6.0     ## top kenara bu kadar yaklaşınca kamera uzaklaşmaya başlar
-@export_range(0.5, 12.0, 0.1) var camera_zoom_speed: float = 2.4
+@export_range(0.5, 15.0, 0.1) var camera_zoom_speed: float = 10.0
 
 @export_group("Arayüz (UI)")
 @export_range(8, 32, 1, "suffix:px") var hud_choice_font_size: int = 12  ## Sol üstteki seçilen kuvvetler listesinin yazı boyutu

@@ -345,20 +345,56 @@ func _process(delta: float) -> void:
 		var avail_h_m := (_ground_y() - 70.0) / _base_scale()
 		var dynamic_min_zoom := maxf(Physics.cfg.camera_min_zoom, minf(DEFAULT_SPAN_M / limit_x, avail_h_m / limit_y))
 		
-		if Physics.cfg.dynamic_zoom_mode:
-			# YENİ MOD: X ve Y eşik mesafelerine kadar sabit, sonrasında hızlara oranla uzaklaş
-			var extra_zoom := 0.0
+		if Physics.cfg.dynamic_zoom_with_speed:
+			# TEST MODU 1: HIZ (VELOCITY) VE GEÇEN SÜREYE (active_t) BAĞLI BÖLME
+			var scale_divisor_y := 1.0
+			var scale_divisor_x := 1.0
+			
+			# --- Y EKSENİ ---
+			if bpos.y > Physics.cfg.altitude_zoom_threshold:
+				if not has_meta("t_cross_y"): 
+					set_meta("t_cross_y", play_t)
+				var active_t_y: float = maxf(play_t - float(get_meta("t_cross_y")), 0.0)
+				# BURASI DEĞİŞTİ: Artık speed_factor kullanılıyor (0.035)
+				scale_divisor_y += absf(vnow.y) * active_t_y * Physics.cfg.altitude_speed_factor
+			else:
+				if has_meta("t_cross_y"): 
+					remove_meta("t_cross_y")
+					
+			# --- X EKSENİ ---
+			if bpos.x > Physics.cfg.distance_zoom_threshold:
+				if not has_meta("t_cross_x"): 
+					set_meta("t_cross_x", play_t)
+				var active_t_x: float = maxf(play_t - float(get_meta("t_cross_x")), 0.0)
+				# BURASI DEĞİŞTİ: Artık speed_factor kullanılıyor (0.035)
+				scale_divisor_x += absf(vnow.x) * active_t_x * Physics.cfg.distance_speed_factor
+			else:
+				if has_meta("t_cross_x"): 
+					remove_meta("t_cross_x")
+					
+			var max_divisor := maxf(scale_divisor_x, scale_divisor_y)
+			want = maxf(Physics.cfg.camera_start_zoom / max_divisor, dynamic_min_zoom)
+			
+		elif Physics.cfg.dynamic_zoom_mode:
+			# TEST MODU 2: MESAFEYE (POSITION) BAĞLI BÖLME (En Kararlı Mod)
+			var scale_divisor_y := 1.0
+			var scale_divisor_x := 1.0
 			
 			if bpos.y > Physics.cfg.altitude_zoom_threshold:
-				extra_zoom += absf(vnow.y) * Physics.cfg.altitude_zoom_factor
+				var excess_y := bpos.y - Physics.cfg.altitude_zoom_threshold
+				# BURASI AYNI: Normal factor kullanılıyor (0.040)
+				scale_divisor_y += excess_y * Physics.cfg.altitude_zoom_factor
 				
 			if bpos.x > Physics.cfg.distance_zoom_threshold:
-				extra_zoom += absf(vnow.x) * Physics.cfg.distance_zoom_factor
+				var excess_x := bpos.x - Physics.cfg.distance_zoom_threshold
+				# BURASI AYNI: Normal factor kullanılıyor (0.040)
+				scale_divisor_x += excess_x * Physics.cfg.distance_zoom_factor
 				
-			# Ne kadar hızlanırsa hızlansın, uzaklaşma dynamic_min_zoom bariyerini delemez
-			want = maxf(Physics.cfg.camera_start_zoom - extra_zoom, dynamic_min_zoom)
+			var max_divisor := maxf(scale_divisor_x, scale_divisor_y)
+			want = maxf(Physics.cfg.camera_start_zoom / max_divisor, dynamic_min_zoom)
+			
 		else:
-			# ESKİ MOD: X ve Y mesafelerinin ikisini de hesaba katarak sığdırma (fit) yap
+			# ESKİ MOD: Otomatik sığdırma (fit)
 			var prog := clampf(maxf(bpos.x / maxf(fit_maxx, 1.0), bpos.y / maxf(fit_maxy, 1.0)), 0.0, 1.0)
 			var safe_fit := maxf(fit_zoom, dynamic_min_zoom)
 			want = lerpf(Physics.cfg.camera_start_zoom, safe_fit, prog)
@@ -682,7 +718,7 @@ func _draw_velocity(ball_px: Vector2, vel: Vector2) -> void:
 		scr = scr.normalized() * VEL_MAX
 	_draw_arrow(ball_px, ball_px + scr, C_VEL, "v", 5.0)
 
-func _draw_speed_readout(ball_px: Vector2, vel: Vector2) -> void:
+func _draw_speed_readout(ball_px: Vector2, _vel: Vector2) -> void:
 	if apex_flash <= 0.0:
 		return
 	var font := get_theme_default_font()
@@ -774,9 +810,9 @@ func _draw_player(feet: Vector2) -> void:
 		_draw_player_fallback(feet)
 		return
 	var rect: Rect2 = fr["rect"]
-	var scale := (size.y * 0.125 * cam_zoom) / maxf(sp_ref_h, 1.0)   # zoomla küçülür
-	var w := rect.size.x * scale
-	var h := rect.size.y * scale
+	var draw_scale := (size.y * 0.125 * cam_zoom) / maxf(sp_ref_h, 1.0)  
+	var w := rect.size.x * draw_scale
+	var h := rect.size.y * draw_scale
 	# ayaklar 'feet'te, yatayda ortalı; karenin dolgu payı get_used_rect ile kırpıldı
 	var dest := Rect2(feet.x - w * 0.5, feet.y - h, w, h)
 	draw_texture_rect_region(fr["tex"], dest, rect)

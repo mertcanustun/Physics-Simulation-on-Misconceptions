@@ -73,7 +73,10 @@ static func simulate(gravity: bool, kick: bool, air: bool,
 			break                                  # TAM DURDU -> yörünge biter
 		pts.append({"p": pos, "v": vel, "t": t})
 		if pos.x > cfg.max_x or pos.y > cfg.max_y:
-			break                                  # ekranı terk etti (yerçekimsiz senaryo)
+			break                                  # ekranı terk etti
+			
+		if t >= cfg.max_t:
+			break                                  # zaman aşımına uğradı (sonsuz döngü engeli)                              # ekranı terk etti (yerçekimsiz senaryo)
 	return {
 		"points": pts,
 		"impact_x": impact_x,
