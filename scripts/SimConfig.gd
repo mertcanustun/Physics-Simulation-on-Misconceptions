@@ -93,6 +93,7 @@ extends Resource
 
 @export_group("Arayüz (UI)")
 @export_range(8, 32, 1, "suffix:px") var hud_choice_font_size: int = 12  ## Sol üstteki seçilen kuvvetler listesinin yazı boyutu
+@export var show_apex_popup: bool = true  ## Tepe noktası (apex) bilgi pop-up'ını ekranda göster
 
 @export_group("Gökyüzü")
 @export_range(0, 15, 1) var cloud_count: int = 4               ## arka planda kaç bulut olsun (0 = kapalı)

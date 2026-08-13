@@ -719,6 +719,11 @@ func _draw_velocity(ball_px: Vector2, vel: Vector2) -> void:
 	_draw_arrow(ball_px, ball_px + scr, C_VEL, "v", 5.0)
 
 func _draw_speed_readout(ball_px: Vector2, _vel: Vector2) -> void:
+	# --- YENİ EKLENEN KONTROL ---
+	if not Physics.cfg.show_apex_popup:
+		return
+	# ----------------------------
+
 	if apex_flash <= 0.0:
 		return
 	var font := get_theme_default_font()
