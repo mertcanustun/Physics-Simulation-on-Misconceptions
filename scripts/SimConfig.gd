@@ -18,10 +18,20 @@ extends Resource
 ## okunduğunda GDScript'in statik tip çıkarımı `:=` ile bunu çözemiyor
 ## ("Cannot infer the type" parse hatası); açık tip bu sorunu ortadan kaldırıyor.
 
-# --- WEBHOOK AYARLARI ---
-@export_group("API ve Webhook")
-@export var webhook_submit_url: String = "https://webhook.site/93ce532b-d859-4c28-8cf0-69487a2c3780"
-@export var webhook_fetch_url: String = "https://webhook.site/#!/view/93ce532b-d859-4c28-8cf0-69487a2c3780"
+# --- TELEMETRİ SUNUCUSU (Supabase) ---
+## "Simülasyonu Bitir"de biriken Telemetry.session_events buraya POST edilir.
+## Boş bırakılırsa (varsayılan) gönderim sessizce atlanır — yerel dosya kaydı
+## (DataLog/Telemetry user://) etkilenmez, bu sadece merkezi kopyalama.
+## KURULUM: bkz. docs/supabase-telemetri.md — kısaca Supabase'de bir proje +
+## `telemetry_events` tablosu + "yalnızca INSERT" RLS politikası oluşturup
+## Project Settings → API'den URL ve anon (public) anahtarı buraya yapıştır.
+## anon anahtar GİZLİ DEĞİLDİR — web build'e gömülüp herkese görünür olabilir;
+## güvenlik anahtarın gizliliğinden değil, RLS politikasından gelir (yalnızca
+## ekleme izni var, okuma/silme yok — sızsa bile kimse veriyi geri okuyamaz).
+@export_group("Telemetri Sunucusu (Supabase)")
+@export var supabase_url: String = ""            ## ör: https://xxxxxxxx.supabase.co
+@export var supabase_anon_key: String = ""       ## Project Settings → API → "anon public"
+@export var supabase_table: String = "telemetry_events"
 
 @export_group("Kuvvetler")
 @export_range(1.0, 20.0, 0.01, "suffix:m/s²") var gravity_g: float = 9.81

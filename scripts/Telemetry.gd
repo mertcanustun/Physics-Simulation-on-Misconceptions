@@ -250,6 +250,28 @@ func _write(type: String, payload: Dictionary) -> void:
 func _exit_tree() -> void:
 	_close()
 
+# ---------------------------------------------------------------- Supabase dışa aktarma
+## `session_events`i Supabase `telemetry_events` tablosunun sütunlarına uyacak
+## şekilde yeniden şekillendirir: sabit sütunlar ayrı alanlar, türüne özel geri
+## kalan her şey `payload` (jsonb) sütununa gider. PostgREST, tablo şemasında
+## olmayan bir anahtar gönderilirse hata verir; bu yüzden düz satır olduğu gibi
+## gönderilemez (bkz. Main.gd _on_finish_sim).
+func supabase_rows() -> Array:
+	var out: Array = []
+	for row in session_events:
+		var r: Dictionary = row.duplicate()
+		var fixed := {
+			"ts_ms": r.get("ts_ms"), "sid": r.get("sid"), "code": r.get("code"),
+			"group_label": r.get("group"), "seen": r.get("seen"), "mode": r.get("mode"),
+			"attempt": r.get("attempt"), "type": r.get("type"),
+		}
+		for k in fixed.keys():
+			var src_k: String = "group" if k == "group_label" else k
+			r.erase(src_k)
+		fixed["payload"] = r   # kalan her şey (factor, x, y, dwell_ms, gravity, ...)
+		out.append(fixed)
+	return out
+
 # ---------------------------------------------------------------- okuma / dışa aktarma
 func read_all() -> String:
 	_close()   # tamponu diske geçir, sonra oku
