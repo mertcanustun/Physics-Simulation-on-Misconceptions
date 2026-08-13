@@ -29,6 +29,7 @@ var admin_search: LineEdit
 var admin_status: Label
 var admin_log_tree: Tree   # <--- YENİ EKLENEN SAT
 var admin_log_display: RichTextLabel   # <--- SADECE BU SATIRI EKLEYİN
+var _supabase_busy := false   # HTTP_LogSubmit aynı anda tek istek kaldırabiliyor — bkz. _sync_telemetry
 var btn_activate: Button
 var btn_stop: Button
 var kick_panel: PanelContainer
@@ -106,6 +107,7 @@ func _ready() -> void:
 	# --- YENİ EKLENEN SATIRLAR ---
 	var http_submit := HTTPRequest.new()
 	http_submit.name = "HTTP_LogSubmit"
+	http_submit.request_completed.connect(func(_r, _c, _h, _b): _supabase_busy = false)
 	add_child(http_submit)
 	# -----------------------------
 	
@@ -461,22 +463,7 @@ func _build_thanks_modal() -> void:
 ## çubuğu ve soru paneli gizlenir ki geri dönüp yeni deneme yapılamasın.
 func _on_finish_sim() -> void:
 	Tele.run_finish_pressed()
-	
-	# --- Toplanan tüm veriyi Supabase'e fırlat (bkz. docs/supabase-telemetri.md) ---
-	var http_node = get_node_or_null("HTTP_LogSubmit")
-	var cfg := Physics.cfg
-	if http_node != null and Tele.session_events.size() > 0 and cfg.supabase_url != "" and cfg.supabase_anon_key != "":
-		var endpoint := "%s/rest/v1/%s" % [cfg.supabase_url.rstrip("/"), cfg.supabase_table]
-		var payload := JSON.stringify(Tele.supabase_rows())
-		var headers := [
-			"Content-Type: application/json",
-			"apikey: %s" % cfg.supabase_anon_key,
-			"Authorization: Bearer %s" % cfg.supabase_anon_key,
-			"Prefer: return=minimal",
-		]
-		http_node.request(endpoint, headers, HTTPClient.METHOD_POST, payload)
-	# ---------------------------------------------------------------
-	
+	_sync_telemetry()
 	Tele.end_session()
 	_stop_wind()
 	result_center.visible = false
@@ -484,6 +471,38 @@ func _on_finish_sim() -> void:
 	control_bar.visible = false
 	hud_card.visible = false
 	thanks_center.visible = true
+
+## Biriken telemetri olaylarını Supabase'e gönderir (bkz. docs/supabase-telemetri.md).
+## Yalnızca EN SON çağrıdan bu yana eklenen olaylar gider (Telemetry.gd
+## _synced_count ile takip edilir) — birden çok yerden çağrılsa da (gol
+## almadan "Kuvvetleri Değiştir" VE gol alıp "Simülasyonu Bitir") satırlar
+## yinelenmez. "Deneme modu"nda hiçbir şey gönderilmez (DataLog ile aynı ilke).
+func _sync_telemetry() -> void:
+	if not Tele.is_official():
+		return
+	var http_node = get_node_or_null("HTTP_LogSubmit")
+	var cfg := Physics.cfg
+	if http_node == null or cfg.supabase_url == "" or cfg.supabase_anon_key == "":
+		return
+	if _supabase_busy:
+		# HTTPRequest tek seferde tek istek kaldırabiliyor; bu senkronizasyonu
+		# atla. _synced_count'a HENÜZ dokunmadık (supabase_rows_since_last_sync
+		# çağrılmadı), o yüzden bu olaylar bir SONRAKİ _sync_telemetry() çağrısında
+		# (ör. "Simülasyonu Bitir") otomatik olarak dahil edilecek — kayıp yok.
+		return
+	var rows: Array = Tele.supabase_rows_since_last_sync()
+	if rows.is_empty():
+		return
+	var endpoint := "%s/rest/v1/%s" % [cfg.supabase_url.rstrip("/"), cfg.supabase_table]
+	var payload := JSON.stringify(rows)
+	var headers := [
+		"Content-Type: application/json",
+		"apikey: %s" % cfg.supabase_anon_key,
+		"Authorization: Bearer %s" % cfg.supabase_anon_key,
+		"Prefer: return=minimal",
+	]
+	_supabase_busy = true
+	http_node.request(endpoint, headers, HTTPClient.METHOD_POST, payload)
 
 ## ------------------- ALT KONTROL ÇUBUĞU -------------------
 func _build_control_bar() -> void:
@@ -1111,6 +1130,7 @@ func _on_replay() -> void:
 
 func _on_change_answer() -> void:
 	Tele.answer_change()
+	_sync_telemetry()   # gol alınmadan da bu ana kadarki deneme(ler) Supabase'e gitsin
 	result_center.visible = false
 	_stop_wind()
 	field.reset()

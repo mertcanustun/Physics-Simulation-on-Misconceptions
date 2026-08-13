@@ -36,6 +36,7 @@ var _seen := false
 var _mode := "trial"
 var _official := false
 var _attempt := 0
+var _synced_count := 0   # Supabase'e daha önce gönderilmiş session_events sınırı (yinelenen satır göndermemek için)
 
 var _deciding := false
 var _decision_t0 := 0.0
@@ -71,6 +72,7 @@ func begin_session(code: String, group: String, seen: bool, official: bool) -> v
 	_deciding = false
 	
 	session_events.clear() # <--- YENİ EKLENEN SATIR (Eski havuzu temizle)
+	_synced_count = 0
 	
 	if _active():
 		var vp := get_viewport().get_visible_rect().size
@@ -80,6 +82,11 @@ func begin_session(code: String, group: String, seen: bool, official: bool) -> v
 func set_official(on: bool) -> void:
 	_official = on
 	_mode = "official" if on else "trial"
+
+## Supabase'e göndermeden önce Main.gd'nin kontrol etmesi için — "deneme
+## modu"nda hiçbir şey merkezi sunucuya gitmemeli (DataLog ile aynı ilke).
+func is_official() -> bool:
+	return _official
 
 ## Giriş ekranına dönünce (Main._show_entry) — oturumu kapat.
 func end_session() -> void:
@@ -255,10 +262,10 @@ func _exit_tree() -> void:
 ## şekilde yeniden şekillendirir: sabit sütunlar ayrı alanlar, türüne özel geri
 ## kalan her şey `payload` (jsonb) sütununa gider. PostgREST, tablo şemasında
 ## olmayan bir anahtar gönderilirse hata verir; bu yüzden düz satır olduğu gibi
-## gönderilemez (bkz. Main.gd _on_finish_sim).
-func supabase_rows() -> Array:
+## gönderilemez (bkz. Main.gd _sync_telemetry).
+func _reshape(events: Array) -> Array:
 	var out: Array = []
-	for row in session_events:
+	for row in events:
 		var r: Dictionary = row.duplicate()
 		var fixed := {
 			"ts_ms": r.get("ts_ms"), "sid": r.get("sid"), "code": r.get("code"),
@@ -271,6 +278,17 @@ func supabase_rows() -> Array:
 		fixed["payload"] = r   # kalan her şey (factor, x, y, dwell_ms, gravity, ...)
 		out.append(fixed)
 	return out
+
+## Yalnızca EN SON senkronizasyondan bu yana eklenen olayları döndürür ve
+## sayacı ilerletir — aynı satırların Supabase'e tekrar tekrar (ve yinelenerek)
+## gönderilmesini önler. Gol olmadan "Kuvvetleri Değiştir"e basılsa da, gol
+## alınıp "Simülasyonu Bitir"e basılsa da çağrılabilir (bkz. Main.gd).
+func supabase_rows_since_last_sync() -> Array:
+	if _synced_count >= session_events.size():
+		return []
+	var new_events: Array = session_events.slice(_synced_count)
+	_synced_count = session_events.size()
+	return _reshape(new_events)
 
 # ---------------------------------------------------------------- okuma / dışa aktarma
 func read_all() -> String:
