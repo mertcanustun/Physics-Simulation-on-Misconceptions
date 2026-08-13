@@ -10,5 +10,6 @@ supabase_anon_key = "sb_publishable_Rd1eagPKHe9VLSJtj0K_lA_FpK9Ctw4"
 drag_k = 0.015
 max_y = 150.0
 max_x = 150.0
+max_watch_seconds = 13.0
 altitude_zoom_threshold = 20.0
 hud_choice_font_size = 10
