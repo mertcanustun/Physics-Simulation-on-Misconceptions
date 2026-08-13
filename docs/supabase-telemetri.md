@@ -38,6 +38,11 @@ alter table telemetry_events enable row level security;
 create policy "anon can insert" on telemetry_events
   for insert to anon
   with check (true);
+
+-- RLS politikası TEK BAŞINA yetmez — Postgres, RLS'den ÖNCE tablo düzeyinde
+-- bir GRANT arıyor. Bu satır olmadan "permission denied for table
+-- telemetry_events" (42501) hatası alırsın.
+grant insert on public.telemetry_events to anon;
 ```
 
 Bu kadar. `select`/`update`/`delete` için hiç politika YOK — yani RLS varsayılan

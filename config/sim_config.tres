@@ -1,11 +1,12 @@
-[gd_resource type="Resource" script_class="SimConfig" format=3 uid="uid://dee06dt2lgb0w"]
+[gd_resource type="Resource" script_class="SimConfig" load_steps=3 format=3 uid="uid://dee06dt2lgb0w"]
 
 [ext_resource type="Script" uid="uid://1kovlahoiitu" path="res://scripts/SimConfig.gd" id="1"]
 [ext_resource type="AudioStream" uid="uid://ccqg37j3ior65" path="res://assets/audio/kick.mp3" id="1_ga5jb"]
 
 [resource]
 script = ExtResource("1")
-webhook_fetch_url = "https://webhook.site/#!/view/93ce532b-d859-4c28-8cf0-69487a2c3780"
+supabase_url = "https://sohyahkyrlzekxiodetn.supabase.co"
+supabase_anon_key = "sb_publishable_Rd1eagPKHe9VLSJtj0K_lA_FpK9Ctw4"
 drag_k = 0.015
 max_y = 150.0
 max_x = 150.0
