@@ -67,7 +67,7 @@ extends Resource
 @export_range(1.0, 20.0, 0.5, "suffix:px") var kick_arrow_thickness: float = 6.0
 
 @export_group("Yörünge Çizgileri")
-@export var predicted_path_color: Color = Color("22c55e")     ## öğrencinin tahmini (düz çizgi)
+@export var predicted_path_color: Color = Color("dc2626")     ## öğrencinin tahmini (düz çizgi)
 @export_range(1.0, 12.0, 0.5, "suffix:px") var predicted_path_thickness: float = 3.0
 @export var real_path_color: Color = Color("e2e8f0")          ## GERÇEK yörünge (nokta nokta)
 @export_range(1.0, 8.0, 0.2, "suffix:px") var real_path_dot_radius: float = 2.6
