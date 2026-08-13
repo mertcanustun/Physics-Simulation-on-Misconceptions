@@ -55,7 +55,12 @@ extends Resource
 @export_range(0.0, 1.0, 0.01) var bounce_friction: float = 0.72      ## çarpmada yatay hız kaybı
 @export_range(0.0, 20.0, 0.1, "suffix:m/s²") var roll_friction: float = 6.5   ## yuvarlanma sürtünmesi
 @export_range(0.0, 5.0, 0.05, "suffix:m/s") var rest_vy: float = 1.2         ## bu dikey hızın altında artık sekmez, yuvarlanmaya geçer
-@export_range(1.0, 120.0, 0.5, "suffix:sn") var max_t: float = 15.0           ## yörünge en fazla bu kadar sürer, sonra zorla kesilir
+## Bu, GERÇEK (izlenen/duvar saati) saniye cinsindendir — SİMÜLE fizik saniyesi
+## DEĞİL. Fizik entegratörü zaman_ölçeğinden (time_scale) bağımsız çalışır;
+## bu değer Physics.gd içinde time_scale ile çarpılıp gerçek fizik-saniye
+## bütçesine çevrilir. Yani time_scale'i değiştirsen bile "ekranda kaç saniye
+## bekleteceğim" sezgisi hep doğru kalır — ayrıca hesap yapmana gerek yok.
+@export_range(1.0, 60.0, 0.5, "suffix:sn (izlenen/gerçek süre)") var max_watch_seconds: float = 28.57   ## yörünge ekranda en fazla bu kadar SANİYE (gerçek zaman) sürer, sonra zorla kesilir
 
 @export_group("Kale / Gol Koşulu")
 @export_range(0.0, 100.0, 0.5, "suffix:m") var goal_x: float = 34.0          ## kale ön çizgisi — top buraya (+derinlik) düşerse GOL

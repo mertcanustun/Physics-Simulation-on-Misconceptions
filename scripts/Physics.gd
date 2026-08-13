@@ -30,7 +30,11 @@ static func simulate(gravity: bool, kick: bool, air: bool,
 	var impact_x := -1.0
 	var landed := false
 	var rolling := false
-	while t < cfg.max_t:
+	# cfg.max_watch_seconds GERÇEK (izlenen) saniyedir; entegratör simüle fizik
+	# saniyesiyle çalışıyor, o yüzden time_scale ile fizik-saniyeye çevriliyor
+	# (bkz. SimConfig.gd max_watch_seconds açıklaması / FieldView.gd sdt := delta * time_scale).
+	var max_sim_t := cfg.max_watch_seconds * cfg.time_scale
+	while t < max_sim_t:
 		var acc := Vector2.ZERO
 		if gravity:
 			acc.y -= cfg.gravity_g   # kütleden ETKİLENMEZ — gerçek fizik (Galileo)
@@ -75,7 +79,7 @@ static func simulate(gravity: bool, kick: bool, air: bool,
 		if pos.x > cfg.max_x or pos.y > cfg.max_y:
 			break                                  # ekranı terk etti
 			
-		if t >= cfg.max_t:
+		if t >= max_sim_t:
 			break                                  # zaman aşımına uğradı (sonsuz döngü engeli)                              # ekranı terk etti (yerçekimsiz senaryo)
 	return {
 		"points": pts,
