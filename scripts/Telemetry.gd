@@ -29,6 +29,7 @@ const MOVE_MIN_DIST := 3.0          # bu kadar px kımıldamadıysa örnekleme (
 const DEBUG_LOG_IN_TRIAL := false   # true → veri toplama kapalıyken de yazar (YALNIZ geliştirme testi)
 
 var _sid := ""
+var session_events: Array = []   # Tüm olayların birikeceği hafıza havuzu
 var _code := ""
 var _group := ""
 var _seen := false
@@ -68,6 +69,9 @@ func begin_session(code: String, group: String, seen: bool, official: bool) -> v
 	set_official(official)
 	_attempt = 0
 	_deciding = false
+	
+	session_events.clear() # <--- YENİ EKLENEN SATIR (Eski havuzu temizle)
+	
 	if _active():
 		var vp := get_viewport().get_visible_rect().size
 		_write("session_begin", {"viewport_w": int(vp.x), "viewport_h": int(vp.y)})
@@ -233,6 +237,9 @@ func _write(type: String, payload: Dictionary) -> void:
 		"attempt": _attempt, "type": type,
 	}
 	row.merge(payload)
+	
+	session_events.append(row) # <--- YENİ EKLENEN SATIR (Paketi hafızaya da at)
+	
 	_open()
 	if _f == null:
 		push_error("Telemetry: kayıt dosyası açılamadı: %s" % PATH)

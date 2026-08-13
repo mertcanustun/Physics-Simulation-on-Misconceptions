@@ -5,6 +5,7 @@
 
 [resource]
 script = ExtResource("1")
+webhook_fetch_url = "https://webhook.site/#!/view/93ce532b-d859-4c28-8cf0-69487a2c3780"
 drag_k = 0.015
 max_y = 150.0
 max_x = 150.0

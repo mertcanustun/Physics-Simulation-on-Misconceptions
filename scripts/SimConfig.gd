@@ -18,6 +18,11 @@ extends Resource
 ## okunduğunda GDScript'in statik tip çıkarımı `:=` ile bunu çözemiyor
 ## ("Cannot infer the type" parse hatası); açık tip bu sorunu ortadan kaldırıyor.
 
+# --- WEBHOOK AYARLARI ---
+@export_group("API ve Webhook")
+@export var webhook_submit_url: String = "https://webhook.site/93ce532b-d859-4c28-8cf0-69487a2c3780"
+@export var webhook_fetch_url: String = "https://webhook.site/#!/view/93ce532b-d859-4c28-8cf0-69487a2c3780"
+
 @export_group("Kuvvetler")
 @export_range(1.0, 20.0, 0.01, "suffix:m/s²") var gravity_g: float = 9.81
 @export_range(0.0, 0.1, 0.001, "suffix:kg/m") var drag_k: float = 0.025          ## hava direnci katsayısı

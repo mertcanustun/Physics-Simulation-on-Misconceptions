@@ -27,6 +27,8 @@ var err_lbl: Label
 var admin_center: CenterContainer
 var admin_search: LineEdit
 var admin_status: Label
+var admin_log_tree: Tree   # <--- YENİ EKLENEN SAT
+var admin_log_display: RichTextLabel   # <--- SADECE BU SATIRI EKLEYİN
 var btn_activate: Button
 var btn_stop: Button
 var kick_panel: PanelContainer
@@ -100,6 +102,13 @@ func _ready() -> void:
 	_build_control_bar()
 	_build_save_dialog()
 	resized.connect(_fit_question_panel)
+	
+	# --- YENİ EKLENEN SATIRLAR ---
+	var http_submit := HTTPRequest.new()
+	http_submit.name = "HTTP_LogSubmit"
+	add_child(http_submit)
+	# -----------------------------
+	
 	_show_entry()
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -452,6 +461,15 @@ func _build_thanks_modal() -> void:
 ## çubuğu ve soru paneli gizlenir ki geri dönüp yeni deneme yapılamasın.
 func _on_finish_sim() -> void:
 	Tele.run_finish_pressed()
+	
+	# --- Toplanan tüm veriyi sunucuya fırlat ---
+	var http_node = get_node_or_null("HTTP_LogSubmit")
+	if http_node != null and Tele.session_events.size() > 0 and webhook_submit_url != "":
+		var payload := JSON.stringify(Tele.session_events)
+		var headers := ["Content-Type: application/json"]
+		http_node.request(webhook_submit_url, headers, HTTPClient.METHOD_POST, payload)
+	# ---------------------------------------------------------------
+	
 	Tele.end_session()
 	_stop_wind()
 	result_center.visible = false
@@ -693,7 +711,20 @@ func _build_admin_panel() -> void:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 8)
 	panel.add_child(v)
-	v.add_child(_label("Yönetici Paneli", 22, TXT))
+	# --- ÜST BAŞLIK VE GERİ DÖN BUTONU ---
+	var top_row := HBoxContainer.new()
+	var title_lbl := _label("Yönetici Paneli", 22, TXT)
+	title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top_row.add_child(title_lbl)
+	
+	var btn_back_top := Button.new()
+	btn_back_top.text = "← Başka Kod Dene"
+	_style_button(btn_back_top, CARD2, TXT_MUTED, Color(1, 1, 1, 0.05))
+	btn_back_top.pressed.connect(_show_entry)
+	top_row.add_child(btn_back_top)
+	v.add_child(top_row)
+	# --------------------------------------
+	
 	v.add_child(_label("Katılımcı kodunu ara, veri toplamayı başlat/durdur.", 13, TXT_MUTED))
 	v.add_child(_spacer(8))
 	admin_search = LineEdit.new()
@@ -720,12 +751,44 @@ func _build_admin_panel() -> void:
 	btn_stop.disabled = true
 	btn_stop.pressed.connect(_on_admin_stop)
 	h.add_child(btn_stop)
-	v.add_child(_spacer(6))
-	var back := Button.new()
-	back.text = "Giriş ekranına dön"
-	back.flat = true
-	back.pressed.connect(_show_entry)
-	v.add_child(back)
+
+	# --- YÖNETİCİ AĞAÇ (TREE) GÖRÜNÜMÜ ---
+	v.add_child(_spacer(12))
+	v.add_child(_label("Gelen Sonuçlar (Öğrenci Logları)", 16, TXT))
+
+	admin_log_tree = Tree.new()
+	admin_log_tree.custom_minimum_size = Vector2(480, 250)
+	admin_log_tree.hide_root = true
+	var tree_sb := StyleBoxFlat.new()
+	tree_sb.bg_color = CARD2
+	tree_sb.set_corner_radius_all(8)
+	tree_sb.set_content_margin_all(8)
+	admin_log_tree.add_theme_stylebox_override("panel", tree_sb)
+	v.add_child(admin_log_tree)
+
+	var http_fetch := HTTPRequest.new()
+	http_fetch.name = "HTTP_AdminFetch"
+	http_fetch.request_completed.connect(_on_admin_data_received)
+	add_child(http_fetch)
+
+	# Verilerin listeleneceği kaydırılabilir alan
+	var log_scroll := ScrollContainer.new()
+	log_scroll.custom_minimum_size = Vector2(460, 200)
+	var log_sb := StyleBoxFlat.new()
+	log_sb.bg_color = CARD2
+	log_sb.set_corner_radius_all(8)
+	log_sb.set_content_margin_all(8)
+	log_scroll.add_theme_stylebox_override("panel", log_sb)
+	v.add_child(log_scroll)
+
+	# Global bir değişkene atayalım ki sonradan metnini değiştirebilelim
+	# Main.gd'nin en üstüne: var admin_log_display: RichTextLabel eklemelisin.
+	admin_log_display = RichTextLabel.new()
+	admin_log_display.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	admin_log_display.fit_content = true
+	admin_log_display.add_theme_font_size_override("normal_font_size", 12)
+	admin_log_display.text = "Veriler yükleniyor..."
+	log_scroll.add_child(admin_log_display)
 
 func _build_save_dialog() -> void:
 	save_dialog = FileDialog.new()
@@ -837,19 +900,34 @@ func _on_continue() -> void:
 		btn_stop.disabled = true
 		entry_center.visible = false
 		admin_center.visible = true
+		
+		# Ağacı temizle ve bekleme mesajı ekle
+		admin_log_tree.clear()
+		var root = admin_log_tree.create_item()
+		var wait_node = admin_log_tree.create_item(root)
+		wait_node.set_text(0, "Sunucudan güncel veriler çekiliyor...")
+		
+		var http_node = get_node_or_null("HTTP_AdminFetch")
+		if http_node != null and webhook_fetch_url != "":
+			http_node.request(webhook_fetch_url)
 		return
+		
 	if not Codes.is_well_formed(c):
 		err_lbl.text = "Geçerli bir kod girin, örn. L-3-MF-B-K-123"
 		return
 	if not Codes.in_library(c):
 		err_lbl.text = "Kod kütüphanede bulunamadı."
 		return
+		
 	participant_code = c
 	group = Codes.group_label(c)
 	official = Session.is_active(c)
+	if c == "DENEME-124-TEST":
+		official = false # Bu kod için veri kaydını zorla kapat
+		
 	Tele.begin_session(participant_code, group, Codes.has_seen_topic(c), official)
 	attempt = 0
-	var mode_txt := "VERİ TOPLANIYOR" if official else "DENEME MODU — veri kaydedilmiyor"
+	var _mode_txt := "VERİ TOPLANIYOR" if official else "DENEME MODU — veri kaydedilmiyor"
 	mode_banner.text = ""   # veri kaydı bilgisi öğrenciye gösterilmez (F9 ile görülür)
 	mode_banner.add_theme_color_override("font_color", GREEN if official else Color("c2660a"))
 	entry_center.visible = false
@@ -1101,3 +1179,117 @@ func _feedback(g: bool, k: bool, a: bool) -> Array:
 	if a and not g and not k:
 		return [S.t("FB_A_CAT"), S.t("FB_A_MSG")]
 	return [S.t("FB_NONE_CAT"), S.t("FB_NONE_MSG")]
+func _on_admin_data_received(_result: int, _response_code: int, _headers: PackedStringArray, _body: PackedByteArray) -> void:
+	admin_log_tree.clear()
+	var root = admin_log_tree.create_item()
+	
+	# --- GEÇİCİ TEST VERİSİ ---
+	# Artık verinin içinde "code" (öğrenci kimliği) de var
+	var json = [
+		{"code": "DENEME-1", "attempt": 1, "type": "mouse_move", "x": 450, "y": 320, "since_decision_ms": 400},
+		{"code": "DENEME-1", "attempt": 1, "type": "option_hover", "factor": "gravity", "phase": "leave", "dwell_ms": 1200},
+		{"code": "DENEME-1", "attempt": 1, "type": "option_toggle", "factor": "gravity", "checked": true, "since_decision_ms": 1500},
+		{"code": "DENEME-1", "attempt": 1, "type": "mouse_move", "x": 460, "y": 330, "since_decision_ms": 1800},
+		{"code": "DENEME-1", "attempt": 1, "type": "option_toggle", "factor": "air", "checked": true, "since_decision_ms": 2500},
+		{"code": "DENEME-1", "attempt": 1, "type": "answer_submit", "gravity": true, "kick": false, "air": true, "correct": true, "decision_ms": 3500},
+		{"code": "DENEME-1", "attempt": 1, "type": "run_complete", "goal": true, "impact_x": 34.5},
+		
+		{"code": "DENEME-2", "attempt": 1, "type": "mouse_move", "x": 500, "y": 120, "since_decision_ms": 500},
+		{"code": "DENEME-2", "attempt": 1, "type": "option_hover", "factor": "kick", "phase": "leave", "dwell_ms": 2400},
+		{"code": "DENEME-2", "attempt": 1, "type": "option_toggle", "factor": "kick", "checked": true, "since_decision_ms": 3000},
+		{"code": "DENEME-2", "attempt": 1, "type": "answer_submit", "gravity": false, "kick": true, "air": false, "correct": false, "decision_ms": 4200},
+		{"code": "DENEME-2", "attempt": 1, "type": "run_complete", "goal": false, "impact_x": -1.0}
+	]
+	# --------------------------
+	
+	# Olayları önce "Öğrenci Kodu"na, sonra "Deneme"ye göre grupla
+	var students_dict = {}
+	for event in json:
+		if not event is Dictionary: continue
+		
+		var st_code = event.get("code", "Bilinmeyen Öğrenci")
+		var att = event.get("attempt", 0)
+		if att == 0: continue # Sistem loglarını atla
+		
+		if not students_dict.has(st_code):
+			students_dict[st_code] = {}
+			
+		if not students_dict[st_code].has(att):
+			students_dict[st_code][att] = []
+			
+		students_dict[st_code][att].append(event)
+		
+	var factor_names = {"gravity": "Yerçekimi", "kick": "Vuruş Kuvveti", "air": "Hava Direnci"}
+	
+	# 1. KATMAN: ÖĞRENCİLER
+	for st_code in students_dict.keys():
+		var student_node = admin_log_tree.create_item(root)
+		student_node.set_text(0, "👤 Öğrenci: " + str(st_code))
+		student_node.collapsed = false # Öğrenciler açık başlasın ki içindeki denemeler doğrudan görünsün
+		
+		var attempts_dict = students_dict[st_code]
+		
+		# 2. KATMAN: DENEMELER
+		for att in attempts_dict.keys():
+			var evs = attempts_dict[att]
+			
+			var forces = []
+			var total_time = 0.0
+			var result_str = "Bilinmiyor"
+			
+			for e in evs:
+				if e.get("type") == "answer_submit":
+					total_time = float(e.get("decision_ms", 0)) / 1000.0
+					if e.get("gravity", false): forces.append("Yerçekimi")
+					if e.get("kick", false): forces.append("Vuruş")
+					if e.get("air", false): forces.append("Hava")
+				elif e.get("type") == "run_complete":
+					if e.get("goal", false): result_str = "GOL!"
+					elif float(e.get("impact_x", 0.0)) < 0: result_str = "Hiç Yere İnmedi"
+					else: result_str = "Kaçırdı"
+					
+			if forces.is_empty(): forces.append("Hiçbiri")
+			var forces_str = ", ".join(forces)
+			
+			var attempt_node = admin_log_tree.create_item(student_node)
+			attempt_node.set_text(0, "  > %d. Deneme: [%s] -> %s (Toplam: %.1f sn)" % [att, forces_str, result_str, total_time])
+			attempt_node.collapsed = true
+			
+			# 3. KATMAN: KATEGORİLER
+			var node_actions = admin_log_tree.create_item(attempt_node)
+			node_actions.set_text(0, "📂 Adım Adım Seçimler (Tıklamalar)")
+			node_actions.collapsed = false
+			
+			var node_hovers = admin_log_tree.create_item(attempt_node)
+			node_hovers.set_text(0, "📂 İnceleme Süreleri (Düşünme)")
+			node_hovers.collapsed = true
+			
+			var node_mouse = admin_log_tree.create_item(attempt_node)
+			node_mouse.set_text(0, "📂 Fare Yörüngesi (Mikro Takip)")
+			node_mouse.collapsed = true
+			
+			# 4. KATMAN: OLAYLAR VE MİKRO TAKİP
+			for e in evs:
+				var t = e.get("type", "")
+				var sec = float(e.get("since_decision_ms", 0)) / 1000.0
+				
+				if t == "option_toggle":
+					var fname = factor_names.get(e.get("factor", ""), e.get("factor", ""))
+					var status = "SEÇİLDİ" if e.get("checked", false) else "Kaldırıldı"
+					var act = admin_log_tree.create_item(node_actions)
+					act.set_text(0, "    └ %.1f. saniyede -> %s %s" % [sec, fname, status])
+					
+				elif t == "option_hover" and e.get("phase", "") == "leave":
+					var fname = factor_names.get(e.get("factor", ""), e.get("factor", ""))
+					var dwell = float(e.get("dwell_ms", 0)) / 1000.0
+					if dwell > 0:
+						var hov = admin_log_tree.create_item(node_hovers)
+						hov.set_text(0, "    └ %s üzerinde %.1f sn düşündü" % [fname, dwell])
+						
+				elif t == "mouse_move":
+					var m = admin_log_tree.create_item(node_mouse)
+					m.set_text(0, "    └ %.1f. sn -> Fare Konumu (X: %d, Y: %d)" % [sec, int(e.get("x",0)), int(e.get("y",0))])
+					
+				elif t == "answer_submit":
+					var act = admin_log_tree.create_item(node_actions)
+					act.set_text(0, "    └ %.1f. saniyede -> 'Ne olacağını gör' butonuna basıldı" % [sec])
