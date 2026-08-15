@@ -573,6 +573,11 @@ func _on_finish_sim() -> void:
 	control_bar.visible = false
 	hud_card.visible = false
 	thanks_center.visible = true
+	# Zaman çubuğunu ve bilgi ikonunu bitiş ekranında temizle
+	if time_panel:
+		time_panel.visible = false
+	if btn_info_icon:
+		btn_info_icon.visible = false
 
 ## Biriken telemetri olaylarını Supabase'e gönderir (bkz. docs/supabase-telemetri.md).
 ## Yalnızca EN SON çağrıdan bu yana eklenen olaylar gider (Telemetry.gd
