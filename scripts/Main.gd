@@ -234,7 +234,7 @@ func _build_hud() -> void:
 	v.add_child(_spacer(6))
 	v.add_child(_label("YÖRÜNGELER", 11, Color(ACCENT, 0.85)))
 	v.add_child(_label("—  senin tahminin", 12, Physics.cfg.predicted_path_color))
-	v.add_child(_label("···  gerçek yol (hayalet)", 12, Physics.cfg.real_path_color))
+	v.add_child(_label("···  gerçek yörünge", 12, Physics.cfg.real_path_color))
 	v.add_child(_spacer(8))
 	v.add_child(_label("TOPUN HIZI", 11, TXT_MUTED))
 	hud_speed = _label("0.0 m/s", 15, ACCENT)
