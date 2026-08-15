@@ -12,7 +12,6 @@ signal speed_report(speed: float, vx: float, vy: float)   # sol HUD kartı için
 signal altitude_report(alt_m: float, in_space: bool)   # Main burada rüzgar sesini yönetir
 
 # --- sahne ölçüleri ---
-const ORIGIN_X := 330.0      # vuruş noktası (px, soldan) — sol HUD kartlarını kapatmasın
 const RIGHT_MARGIN := 40.0
 const DEFAULT_SPAN_M := 70.0 # zoom=1'de görünen yatay mesafe (m)
 
@@ -160,14 +159,15 @@ func _ready() -> void:
 			ball_rect = Rect2(ur.position, ur.size) if ur.size.x > 0 else Rect2(Vector2.ZERO, ball_tex.get_size())
 
 func _base_scale() -> float:
-	return maxf((size.x - ORIGIN_X - RIGHT_MARGIN) / DEFAULT_SPAN_M, 1.0)
+	# Ölçekleme matematiğini bozmamak için burası hep 330.0 kalmalı!
+	return maxf((size.x - 330.0 - RIGHT_MARGIN) / DEFAULT_SPAN_M, 1.0)
 
 func _ground_y() -> float:
 	return size.y * 0.80
 
 func _world_to_px(p: Vector2) -> Vector2:
 	var s := _base_scale() * cam_zoom
-	var anchor := Vector2(ORIGIN_X, _ground_y()) + shake_off
+	var anchor := Vector2(Physics.cfg.camera_origin_x, _ground_y()) + shake_off
 	return anchor + Vector2(p.x * s, -(p.y - cam_shift) * s)
 
 func set_forces(g: bool, k: bool, a: bool, drag_k: float, imp: float = Physics.cfg.impetus_acc) -> void:
@@ -506,30 +506,45 @@ func _draw() -> void:
 	if (playing or finished) and real.size() > 1:
 		var gp := _world_to_px(_point_at(real, play_t))
 		_draw_ghost_ball(gp)
-	# --- 4) top + oklar (oklar topun ÖNÜNDE, TAM MERKEZDEN) ---
+	# --- 4) top + oklar (Okların ön/arka çizim sırası Inspector'a bağlı) ---
+	var behind := Physics.cfg.draw_arrows_behind_ball # Değişkeni SADECE BİR KERE, en üstte tanımlıyoruz
+	
 	if not trail.is_empty():
 		var bp := _world_to_px(trail[trail.size() - 1])
 		var vnow := _vel_at(predicted, play_t)
-		_draw_ball(bp)
-		if playing:
+		
+		# Eğer oklar ARKAda kalacaksa, önce okları çiz
+		if behind and (playing or finished):
 			_draw_force_arrows(bp, vnow)
 			_draw_velocity(bp, vnow)
+			
+		_draw_ball(bp) # Topu çiz
+		
+		# Eğer oklar ÖNDE kalacaksa, topun üstüne okları çiz
+		if not behind and (playing or finished):
+			_draw_force_arrows(bp, vnow)
+			_draw_velocity(bp, vnow)
+			
+		if playing or finished:
 			_draw_speed_readout(bp, vnow)
+			
 	elif pv_active or intro_active or prekick_active:
 		var b0 := _world_to_px(Vector2.ZERO) + Vector2(0, -10)
 		if prekick_active:
-			# ayak topa değdi: top KALKAR ve orada KALIR (aşağı geri düşmez).
-			# Eskiden sin(PI*pk) ile inip kalkıyordu; "vurduktan sonra top
-			# havada, ayağın üstünde kalsın" isteği üzerine yükselip asılı
-			# kalacak biçimde değiştirildi (bkz. HOLD_OFFSET).
 			var pk := clampf(prekick_t / maxf(Physics.cfg.question_delay_s, 0.0001), 0.0, 1.0)
 			b0 += HOLD_OFFSET * ease(pk, 0.35)
 		elif kick_hold:
-			# soru paneli açıkken: top havada asılı, futbolcunun ayağının üstünde
 			b0 += HOLD_OFFSET
+			
+		var launch := Vector2(cos(deg_to_rad(Physics.cfg.angle_deg)), sin(deg_to_rad(Physics.cfg.angle_deg))) * Physics.cfg.v0
+		
+		if behind and pv_active:
+			_draw_force_arrows(b0, launch)
+			_draw_velocity(b0, launch)
+			
 		_draw_ball(b0)
-		if pv_active:
-			var launch := Vector2(cos(deg_to_rad(Physics.cfg.angle_deg)), sin(deg_to_rad(Physics.cfg.angle_deg))) * Physics.cfg.v0
+		
+		if not behind and pv_active:
 			_draw_force_arrows(b0, launch)
 			_draw_velocity(b0, launch)
 	# --- açıklama kutusu (yörünge renkleri) ---
@@ -716,7 +731,7 @@ func _draw_velocity(ball_px: Vector2, vel: Vector2) -> void:
 	var scr := Vector2(vel.x, -vel.y) * VEL_SCALE
 	if scr.length() > VEL_MAX:
 		scr = scr.normalized() * VEL_MAX
-	_draw_arrow(ball_px, ball_px + scr, C_VEL, "v", 5.0)
+	_draw_arrow(ball_px, ball_px + scr, C_VEL, Physics.cfg.text_velocity_arrow, 5.0)
 
 func _draw_speed_readout(ball_px: Vector2, _vel: Vector2) -> void:
 	# --- YENİ EKLENEN KONTROL ---
@@ -834,29 +849,37 @@ func _prekick_index() -> int:
 	return maxi(_contact_index() - 1, 0)
 
 func _current_player_frame():
+	# 1. GİRİŞ (Koşu ve vuruşa hazırlık)
 	if intro_active:
 		var p := intro_t / INTRO_DUR
 		var skip_r := Physics.cfg.intro_skip_ratio
 		if p < skip_r and not sp_run.is_empty():
-			return sp_run[int(intro_t / 0.09) % sp_run.size()]         # koşu döngüsü
+			return sp_run[int(intro_t / 0.09) % sp_run.size()]
 		elif not sp_kick.is_empty():
-			# koşudan temasa: yalnızca temas karesine KADAR ilerle, orada dur.
 			var kp := clampf((p - skip_r) / maxf(1.0 - skip_r, 0.001), 0.0, 1.0)
 			return sp_kick[mini(int(kp * (_prekick_index() + 1)), _prekick_index())]
+			
+	# 2. AYAK TOPA DEĞDİ (Sıçrama anı)
 	if prekick_active and not sp_kick.is_empty():
-		return sp_kick[_contact_index()]        # ayak topa değdi (küçük sıçrama anı)
+		return sp_kick[_contact_index()]
+		
+	# 3. SORU EKRANI (Bekleme)
 	if kick_hold and not sp_kick.is_empty():
-		return sp_kick[_prekick_index()]        # soru sorulurken: HENÜZ VURMADI
+		return sp_kick[_prekick_index()]
+		
+	# 4. ORİJİNAL KUSURSUZ VURUŞ (Döngüye girmez, bir kere vurup durur)
 	if kick_follow and not sp_kick.is_empty():
-		# vuruş sonrası kalan kareler (temas -> son) akıcı oynar, sonra idle'a döner
 		var fp := clampf(kick_follow_t / KICK_FOLLOW_DUR, 0.0, 1.0)
 		var ci := _prekick_index()
 		var rem := maxi(sp_kick.size() - 1 - ci, 0)
 		return sp_kick[mini(ci + int(fp * (rem + 1)), sp_kick.size() - 1)]
+				
+	# 5. Uçuş bitince veya boştayken her zaman idle pozisyonunda bekle
 	if not sp_idle.is_empty():
-		return sp_idle[0]   # dururken
+		return sp_idle[0]
+		
 	return null
-
+	
 ## Sprite yüklenmezse: 8-bit jenerik futbolcu (kırmızı-beyaz kit).
 
 func _draw_player_fallback(feet: Vector2) -> void:
@@ -871,3 +894,84 @@ func _draw_player_fallback(feet: Vector2) -> void:
 			if row[c] == ".":
 				continue
 			draw_rect(Rect2(ox + c * ps, oy + r * ps, ps + 0.6, ps + 0.6), _messi_color(row[c]))
+# ==============================================================================
+# ZAMAN KAYDIRICISI (SCRUBBING / İLERİ-GERİ SARMA) FONKSİYONLARI
+# ==============================================================================
+
+## Toplam uçuş süresini (saniye) döndürür
+func get_flight_duration() -> float:
+	if predicted.is_empty():
+		return 0.0
+	return predicted[-1]["t"]
+
+## Zaman kaydırıcısı (slider) sürüklendiğinde çağrılır.
+func set_ball_time(t: float) -> void:
+	if predicted.is_empty():
+		return
+	
+	playing = false
+	finished = true
+	play_t = clampf(t, 0.0, get_flight_duration())
+	
+	# KAYDIRICI İLE VURUŞ ANİMASYONUNU BİRBİRİNE BAĞLAMA
+	kick_follow = (play_t < KICK_FOLLOW_DUR)
+	kick_follow_t = play_t
+	
+	trail.clear()
+	for pt in predicted:
+		if pt["t"] <= play_t:
+			trail.append(pt["p"])
+	
+	var exact_pos = _point_at(predicted, play_t)
+	if trail.is_empty() or trail[-1] != exact_pos:
+		trail.append(exact_pos)
+		
+	var vnow = _vel_at(predicted, play_t)
+	_instant_camera_update(exact_pos, vnow)
+	
+	# EKRAN HUD'INI VE OKLARI CANLI GÜNCELLE
+	speed_report.emit(vnow.length(), vnow.x, vnow.y)
+	altitude_report.emit(exact_pos.y, space_f > 0.5)
+	
+	queue_redraw()
+	
+## Zaman tünelinden (slider) çıkıp simülasyonu o saniyeden itibaren oynatmaya devam eder.
+func resume_flight() -> void:
+	if play_t < get_flight_duration():
+		playing = true
+		finished = false
+
+## Kaydırma yapıldığında kameranın yumuşak geçiş yapmadan (anında)
+## hedeflenen saniyedeki pozisyona oturması için kullanılır.
+func _instant_camera_update(bpos: Vector2, vnow: Vector2) -> void:
+	var limit_x := maxf(Physics.cfg.max_x - 10.0, 1.0)
+	var limit_y := maxf(Physics.cfg.max_y - 10.0, 1.0)
+	var avail_h_m := (_ground_y() - 70.0) / _base_scale()
+	var dynamic_min_zoom := maxf(Physics.cfg.camera_min_zoom, minf(DEFAULT_SPAN_M / limit_x, avail_h_m / limit_y))
+	var want := Physics.cfg.camera_start_zoom
+	
+	if Physics.cfg.dynamic_zoom_with_speed:
+		var scale_divisor_y := 1.0
+		var scale_divisor_x := 1.0
+		if bpos.y > Physics.cfg.altitude_zoom_threshold:
+			var active_t_y: float = maxf(play_t - float(get_meta("t_cross_y", 0.0)), 0.0)
+			scale_divisor_y += absf(vnow.y) * active_t_y * Physics.cfg.altitude_speed_factor
+		if bpos.x > Physics.cfg.distance_zoom_threshold:
+			var active_t_x: float = maxf(play_t - float(get_meta("t_cross_x", 0.0)), 0.0)
+			scale_divisor_x += absf(vnow.x) * active_t_x * Physics.cfg.distance_speed_factor
+		var max_divisor := maxf(scale_divisor_x, scale_divisor_y)
+		want = maxf(Physics.cfg.camera_start_zoom / max_divisor, dynamic_min_zoom)
+	elif Physics.cfg.dynamic_zoom_mode:
+		var scale_divisor_y := 1.0
+		var scale_divisor_x := 1.0
+		if bpos.y > Physics.cfg.altitude_zoom_threshold:
+			scale_divisor_y += (bpos.y - Physics.cfg.altitude_zoom_threshold) * Physics.cfg.altitude_zoom_factor
+		if bpos.x > Physics.cfg.distance_zoom_threshold:
+			scale_divisor_x += (bpos.x - Physics.cfg.distance_zoom_threshold) * Physics.cfg.distance_zoom_factor
+		var max_divisor := maxf(scale_divisor_x, scale_divisor_y)
+		want = maxf(Physics.cfg.camera_start_zoom / max_divisor, dynamic_min_zoom)
+	else:
+		var prog := clampf(maxf(bpos.x / maxf(fit_maxx, 1.0), bpos.y / maxf(fit_maxy, 1.0)), 0.0, 1.0)
+		want = lerpf(Physics.cfg.camera_start_zoom, maxf(fit_zoom, dynamic_min_zoom), prog)
+		
+	cam_zoom = want

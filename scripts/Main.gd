@@ -19,6 +19,7 @@ var sim_cfg: SimConfig = preload("res://config/sim_config.tres")
 @onready var v0: float = sim_cfg.v0
 @onready var angle: float = sim_cfg.angle_deg
 @onready var kick_force: float = sim_cfg.impetus_acc
+var time_panel: PanelContainer # Yeni yüzen panelimiz
 var field: FieldView
 var entry_center: CenterContainer
 var code_edit: LineEdit
@@ -37,6 +38,10 @@ var kick_center: CenterContainer
 var kick_scroll: ScrollContainer   # soru paneli ekrana sığmazsa içerik kaydırılır
 var kick_body: VBoxContainer
 var intro_modal_center: CenterContainer
+var intro_panel: PanelContainer
+var intro_continue_btn: Button
+var btn_info_icon: Button
+var is_first_intro := true
 var q_intro: Label
 var q_hint: Label
 var q_run_btn: Button
@@ -69,6 +74,8 @@ var anim_enabled := true     # her soru öncesi koşu-vuruş animasyonu oynasın
 var sound_enabled := true
 var btn_pause: Button
 var btn_reset: Button
+var time_slider: HSlider
+var time_slider_box: HBoxContainer
 var sim_paused := false
 var decision_started := 0.0   # soru gösterildiği an (karar süresi ölçümü)
 var sfx_kick: AudioStreamPlayer
@@ -86,8 +93,21 @@ const BUILD_ID := "2026-08-12c"
 
 ## Modal panellerin kullanabileceği dikey alanı belirleyen paylar (px).
 const TOP_BAR_H := 56.0
-const BOTTOM_BAR_H := 96.0
+const BOTTOM_BAR_H := 90.0
 
+func _process(_delta: float) -> void:
+	# Eğer uçuş devam ettirildiyse (Resume), kaydırıcı çubuğu da animasyonla birlikte ilerlet
+	if field and field.playing and time_panel and time_panel.visible:
+		time_slider.set_value_no_signal(field.play_t)
+		# Sona ulaşırsa pop-up'ı tekrar çıkart
+		if field.play_t >= time_slider.max_value - 0.05:
+			result_center.visible = true
+			btn_pause.text = S.t("CTRL_PAUSE")
+	
+	# Bilgi ikonu görünür olduğu sürece HUD kartının tam 15 piksel altına kilitlensin
+	if btn_info_icon != null and btn_info_icon.visible and hud_card != null:
+		btn_info_icon.position = Vector2(24, hud_card.position.y + hud_card.size.y + 15)
+		
 func _ready() -> void:
 	print("=== kicked-ball build %s | metin: %d anahtar (%s) | impetus_acc=%s drag_k=%s goal_x=%s ==="
 		% [BUILD_ID, S.count(), S.source_name(), Physics.cfg.impetus_acc, Physics.cfg.drag_k, Physics.cfg.goal_x])
@@ -219,24 +239,23 @@ func _build_hud() -> void:
 	v.add_child(_label("TOPUN HIZI", 11, TXT_MUTED))
 	hud_speed = _label("0.0 m/s", 15, ACCENT)
 	v.add_child(hud_speed)
-	hud_vx = _label("vx (yatay) 0.0 m/s", 13, Color("f59e0b"))
+	hud_vx = _label(sim_cfg.text_hud_vx + ": 0.0 m/s", 13, Color("f59e0b"))
 	v.add_child(hud_vx)
-	hud_vy = _label("vy (dikey) 0.0 m/s", 13, Color("a855f7"))
+	hud_vy = _label(sim_cfg.text_hud_vy + ": 0.0 m/s", 13, Color("a855f7"))
 	v.add_child(hud_vy)
 
 func _on_speed_report(sp: float, vx: float, vy: float) -> void:
 	if hud_speed:
 		hud_speed.text = "%.1f m/s" % sp
 	if hud_vx:
-		# yatay hız: hava direnci yoksa DEĞİŞMEZ -> "sabit" etiketi bunu görünür kılar
 		var steady := absf(vx - last_vx) < 0.05 and last_vx > -900.0
-		hud_vx.text = "vx (yatay) %.1f m/s" % vx
+		hud_vx.text = sim_cfg.text_hud_vx + ": %.1f m/s" % vx
 		hud_vx.add_theme_color_override("font_color", ACCENT if steady else Color("f59e0b"))
 		last_vx = vx
 	if hud_vy:
-		hud_vy.text = "vy (dikey) %.1f m/s" % (0.0 if absf(vy) < 0.05 else vy)
+		hud_vy.text = sim_cfg.text_hud_vy + ": %.1f m/s" % (0.0 if absf(vy) < 0.05 else vy)
 		hud_vy.add_theme_color_override("font_color", DANGER if absf(vy) < 1.2 else Color("a855f7"))
-
+		
 ## ------------------- SORU KUTUSU (ortada, modal) -------------------
 func _build_kick_panel() -> void:
 	kick_center = CenterContainer.new()
@@ -274,11 +293,31 @@ func _build_kick_panel() -> void:
 	kick_body = v
 	v.add_child(_label(S.t("KICK_PANEL_TITLE"), 22, TXT))
 	mode_banner = _label("", 11, Color("f59e0b"))
+	mode_banner.visible = false # Görünmez etiketi tamamen gizleyip yer kaplamasını önlüyoruz
 	v.add_child(mode_banner)
-	q_intro = _label(S.t("KICK_PANEL_INTRO"), 12, TXT_MUTED)
+	# Metni "•" işaretinden itibaren ikiye böl
+	var full_intro = S.t("KICK_PANEL_INTRO")
+	var split_idx = full_intro.find("•")
+	
+	var top_text = full_intro
+	var bullet_text = ""
+	if split_idx != -1:
+		top_text = full_intro.substr(0, split_idx).strip_edges()
+		bullet_text = full_intro.substr(split_idx).strip_edges()
+		
+	# 1. BÖLÜM (Üst Kısım): Eski boyut 12 idi, 2 punto büyütüp 14 yapıyoruz
+	q_intro = _label(top_text, 13, TXT_MUTED)
 	q_intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	q_intro.custom_minimum_size.x = 480
 	v.add_child(q_intro)
+	
+	# 2. BÖLÜM (Madde İmleri): 
+	if bullet_text != "":
+		v.add_child(_spacer(4)) # İki metin arasına hafif bir nefes boşluğu
+		var q_bullets = _label(bullet_text, 12, TXT_MUTED)
+		q_bullets.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		q_bullets.custom_minimum_size.x = 480
+		v.add_child(q_bullets)
 	v.add_child(_spacer(2))
 	var question_lbl := _label(S.t("KICK_PANEL_QUESTION"), 16, TXT)
 	question_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -310,32 +349,95 @@ func _build_intro_modal() -> void:
 	intro_modal_center.set_anchors_preset(Control.PRESET_FULL_RECT)
 	intro_modal_center.visible = false
 	add_child(intro_modal_center)
-	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", _card_style(18))
-	panel.custom_minimum_size = Vector2(520, 0)
-	intro_modal_center.add_child(panel)
+	
+	intro_panel = PanelContainer.new()
+	intro_panel.add_theme_stylebox_override("panel", _card_style(18))
+	intro_panel.custom_minimum_size = Vector2(520, 0)
+	intro_modal_center.add_child(intro_panel)
+	
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 14)
-	panel.add_child(v)
+	intro_panel.add_child(v)
 	v.add_child(_label(S.t("POPUP_INTRO_TITLE"), 22, TXT))
+	
 	var body := _label(S.t("POPUP_INTRO_BODY"), 14, TXT_MUTED)
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.custom_minimum_size.x = 480
 	v.add_child(body)
 	v.add_child(_spacer(4))
-	var btn := Button.new()
-	btn.text = S.t("POPUP_INTRO_BTN")
-	btn.custom_minimum_size = Vector2(480, 46)
-	_style_button(btn, ACCENT_DK, Color.WHITE)
-	btn.pressed.connect(_on_intro_modal_continue)
-	v.add_child(btn)
-
+	
+	intro_continue_btn = Button.new()
+	intro_continue_btn.text = S.t("POPUP_INTRO_BTN")
+	intro_continue_btn.custom_minimum_size = Vector2(480, 46)
+	_style_button(intro_continue_btn, ACCENT_DK, Color.WHITE)
+	intro_continue_btn.pressed.connect(_on_intro_modal_continue)
+	v.add_child(intro_continue_btn)
+	
+	# Sol Altta Belirecek Küçük Bilgi İkonu
+	btn_info_icon = Button.new()
+	btn_info_icon.text = "i"
+	btn_info_icon.custom_minimum_size = Vector2(80, 40)
+	_style_button(btn_info_icon, CARD, TXT_MUTED, Color(1, 1, 1, 0.1))
+	btn_info_icon.visible = false
+	btn_info_icon.pressed.connect(_on_info_icon_clicked)
+	add_child(btn_info_icon)
+	
 func _on_intro_modal_continue() -> void:
-	intro_modal_center.visible = false
-	control_bar.visible = true
-	# önce koşu-vuruş girişi; ayak topa değince (_on_intro_done) soru gösterilir
-	field.start_intro()
-
+	# Küçülme efekti için paneli geçici olarak CenterContainer'dan çıkarıp serbest bırakıyoruz
+	var start_pos = intro_panel.global_position
+	if intro_panel.get_parent() == intro_modal_center:
+		intro_modal_center.remove_child(intro_panel)
+		add_child(intro_panel)
+		intro_panel.global_position = start_pos
+		
+	# --- İŞTE HAYALETİ YOK EDEN VE TIKLAMALARI AÇAN SATIR ---
+	intro_modal_center.visible = false 
+	
+	intro_panel.pivot_offset = intro_panel.size / 2.0
+	var target_pos = Vector2(24, hud_card.position.y + hud_card.size.y + 15) # Sol HUD panelinin hemen altı
+	
+	# Küçülerek sol alta kayma animasyonu
+	var tween = create_tween()
+	tween.set_parallel(true)
+	tween.set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_CUBIC)
+	tween.tween_property(intro_panel, "scale", Vector2(0.05, 0.05), 0.35)
+	tween.tween_property(intro_panel, "global_position", target_pos, 0.35)
+	tween.tween_property(intro_panel, "modulate:a", 0.0, 0.35)
+	
+	tween.chain().tween_callback(func():
+		intro_panel.visible = false
+		btn_info_icon.position = target_pos
+		btn_info_icon.visible = true
+		
+		# Sadece simülasyon ilk açıldığında futbolcu animasyonunu başlat
+		if is_first_intro:
+			is_first_intro = false
+			control_bar.visible = true
+			field.start_intro()
+	)
+	
+func _on_info_icon_clicked() -> void:
+	btn_info_icon.visible = false
+	intro_panel.visible = true
+	intro_continue_btn.text = "Kapat" # Tekrar açıldığında buton metni Kapat olur
+	
+	var tween = create_tween()
+	tween.set_parallel(true)
+	tween.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
+	
+	var target_pos = (size - intro_panel.size) / 2.0
+	tween.tween_property(intro_panel, "scale", Vector2(1.0, 1.0), 0.4)
+	tween.tween_property(intro_panel, "global_position", target_pos, 0.4)
+	tween.tween_property(intro_panel, "modulate:a", 1.0, 0.4)
+	
+	# Büyüme bitince paneli tekrar CenterContainer içine al (ekran boyutlandırmaları bozulmasın diye)
+	tween.chain().tween_callback(func():
+		if intro_panel.get_parent() != intro_modal_center:
+			intro_panel.get_parent().remove_child(intro_panel)
+			intro_modal_center.add_child(intro_panel)
+		intro_modal_center.visible = true
+	)
+	
 ## key: TELEMETRİ/log için SABİT dahili ad (CSV metni değişse de bozulmaz).
 ## display_title/sub: ekranda görünen metin — res://localization/strings.csv'den gelir.
 func _force_box(parent: VBoxContainer, key: String, display_title: String, sub: String) -> CheckBox:
@@ -534,6 +636,41 @@ func _build_control_bar() -> void:
 	_style_button(btn_reset, CARD2, INFO, Color(INFO, 0.55))
 	btn_reset.pressed.connect(_on_reset_sim)
 	h.add_child(btn_reset)
+	
+	# --- BAĞIMSIZ VE YÜZEN ZAMAN ÇİZGİSİ (İLERİ/GERİ SARMA) PANELİ ---
+	time_panel = PanelContainer.new()
+	time_panel.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	time_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH   # Panel sağa-sola eşit büyüsün
+	time_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN    # Panel aşağı değil YUKARI büyüsün
+	time_panel.offset_bottom = -sim_cfg.slider_offset_y
+	time_panel.custom_minimum_size = Vector2(sim_cfg.slider_width, 50)
+	time_panel.visible = false
+	
+	var tp_sb = StyleBoxFlat.new()
+	tp_sb.bg_color = sim_cfg.slider_bg
+	tp_sb.set_corner_radius_all(25)
+	tp_sb.border_color = Color(1, 1, 1, 0.08)
+	tp_sb.set_border_width_all(1)
+	tp_sb.content_margin_left = 20
+	tp_sb.content_margin_right = 20
+	time_panel.add_theme_stylebox_override("panel", tp_sb)
+	add_child(time_panel) # Alt menüye değil, doğrudan ekrana eklenir (üstte yüzer)
+	
+	time_slider_box = HBoxContainer.new()
+	time_slider_box.add_theme_constant_override("separation", 15)
+	time_panel.add_child(time_slider_box)
+	
+	var scrub_lbl = _label("Zamanı İncele:", 14, TXT_MUTED)
+	time_slider_box.add_child(scrub_lbl)
+	
+	time_slider = HSlider.new()
+	time_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	time_slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	time_slider.step = 0.02
+	time_slider.value_changed.connect(_on_time_scrub)
+	time_slider_box.add_child(time_slider)
+	# ----------------------------------------------------------------
+	
 	# --- AYARLAR: giriş animasyonu ve ses aç/kapa ---
 	btn_anim = Button.new()
 	btn_anim.custom_minimum_size = Vector2(150, 40)
@@ -619,10 +756,10 @@ func _reset_hud_values() -> void:
 	if hud_speed:
 		hud_speed.text = "0.0 m/s"
 	if hud_vx:
-		hud_vx.text = "vx (yatay) 0.0 m/s"
+		hud_vx.text = sim_cfg.text_hud_vx + ": 0.0 m/s"
 		hud_vx.add_theme_color_override("font_color", Color("f59e0b"))
 	if hud_vy:
-		hud_vy.text = "vy (dikey) 0.0 m/s"
+		hud_vy.text = sim_cfg.text_hud_vy + ": 0.0 m/s"
 		hud_vy.add_theme_color_override("font_color", Color("a855f7"))
 
 func _hide_question() -> void:
@@ -655,21 +792,6 @@ func _set_force_rows_enabled(on: bool) -> void:
 	for cb in [cb_gravity, cb_kick, cb_air]:
 		if cb:
 			cb.disabled = not on
-
-func _on_pause_toggle() -> void:
-	sim_paused = not sim_paused
-	field.set_paused(sim_paused)
-	btn_pause.text = S.t("CTRL_RESUME") if sim_paused else S.t("CTRL_PAUSE")
-
-func _on_reset_sim() -> void:
-	sim_paused = false
-	field.set_paused(false)
-	btn_pause.text = S.t("CTRL_PAUSE")
-	result_center.visible = false
-	_stop_wind()
-	field.reset()
-	_reset_hud_values()
-	_back_to_question()
 
 func _build_field() -> void:
 	field = FieldView.new()
@@ -889,6 +1011,17 @@ func _toast(msg: String) -> void:
 # ---------------------------------------------------------------- flow
 
 func _show_entry() -> void:
+	is_first_intro = true
+	if btn_info_icon:
+		btn_info_icon.visible = false
+	if intro_panel and intro_panel.get_parent() != intro_modal_center:
+		intro_panel.get_parent().remove_child(intro_panel)
+		intro_modal_center.add_child(intro_panel)
+		intro_panel.scale = Vector2.ONE
+		intro_panel.modulate.a = 1.0
+		intro_panel.visible = true
+	if intro_continue_btn:
+		intro_continue_btn.text = S.t("POPUP_INTRO_BTN")
 	Tele.end_session()
 	_stop_wind()
 	hud_card.visible = false
@@ -1079,6 +1212,8 @@ func _on_run() -> void:
 			correct, category, is_goal, landing_x, decision_s)
 		Session.count_attempt(participant_code)
 	_hide_question()
+	if time_slider_box:
+		time_panel.visible = false
 	sim_paused = false
 	btn_pause.text = S.t("CTRL_PAUSE")
 	field.set_paused(false)
@@ -1116,11 +1251,18 @@ func _on_flight_finished() -> void:
 	# BAŞARISIZ ekran: yalnızca "Kuvvetleri Değiştir"
 	btn_finish.visible = gol
 	result_center.visible = true
+	# Uçuş bittiğinde sarma çubuğunu göster
+	if field.has_method("get_flight_duration"):
+		time_slider.max_value = field.get_flight_duration()
+		time_slider.value = time_slider.max_value
+		time_panel.visible= true
 	Tele.run_complete(gol, field.impact_x)
 
 func _on_replay() -> void:
 	Tele.replay()
 	result_center.visible = false
+	if time_panel:
+		time_panel.visible = false
 	var dk = Physics.cfg.drag_k
 	var tx := field.target_x
 	field.start_flight(
@@ -1196,3 +1338,44 @@ func _feedback(g: bool, k: bool, a: bool) -> Array:
 	if a and not g and not k:
 		return [S.t("FB_A_CAT"), S.t("FB_A_MSG")]
 	return [S.t("FB_NONE_CAT"), S.t("FB_NONE_MSG")]
+	
+func _on_time_scrub(val: float) -> void:
+	if field.has_method("set_ball_time"):
+		field.set_ball_time(val)
+	
+	# Eğer çubuk en sonda DEĞİLSE pop-up'ı kapat ve "Devam" yap
+	if val < time_slider.max_value - 0.05:
+		result_center.visible = false
+		btn_pause.text = "Devam"
+		btn_pause.add_theme_color_override("font_color", ACCENT)
+	else:
+		# En sona sarılırsa sonuç pop-up'ı geri gelsin
+		result_center.visible = true
+		btn_pause.text = S.t("CTRL_PAUSE")
+		btn_pause.add_theme_color_override("font_color", DANGER)
+
+func _on_pause_toggle() -> void:
+	if field.finished and time_slider.value < time_slider.max_value:
+		# Zaman tünelinden kaldığı yerden devam etme (RESUME)
+		field.resume_flight()
+		btn_pause.text = S.t("CTRL_PAUSE")
+		btn_pause.add_theme_color_override("font_color", DANGER)
+		result_center.visible = false
+	else:
+		# Normal Durdur / Başlat mekanizması
+		sim_paused = not sim_paused
+		field.set_paused(sim_paused)
+		btn_pause.text = S.t("CTRL_RESUME") if sim_paused else S.t("CTRL_PAUSE")
+
+func _on_reset_sim() -> void:
+	if time_panel:
+		time_panel.visible = false
+	sim_paused = false
+	field.set_paused(false)
+	btn_pause.text = S.t("CTRL_PAUSE")
+	btn_pause.add_theme_color_override("font_color", DANGER)
+	result_center.visible = false
+	_stop_wind()
+	field.reset()
+	_reset_hud_values()
+	_back_to_question()

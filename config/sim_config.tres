@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="SimConfig" load_steps=3 format=3 uid="uid://dee06dt2lgb0w"]
+[gd_resource type="Resource" script_class="SimConfig" format=3 uid="uid://dee06dt2lgb0w"]
 
 [ext_resource type="Script" uid="uid://1kovlahoiitu" path="res://scripts/SimConfig.gd" id="1"]
 [ext_resource type="AudioStream" uid="uid://ccqg37j3ior65" path="res://assets/audio/kick.mp3" id="1_ga5jb"]
@@ -11,5 +11,6 @@ drag_k = 0.015
 max_y = 150.0
 max_x = 150.0
 max_watch_seconds = 13.0
+camera_origin_x = 200.0
 altitude_zoom_threshold = 20.0
 hud_choice_font_size = 10

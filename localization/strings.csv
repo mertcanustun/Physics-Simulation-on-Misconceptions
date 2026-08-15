@@ -2,17 +2,20 @@ key,text
 POPUP_INTRO_TITLE,"Nasıl çalışır?"
 POPUP_INTRO_BODY,"Birazdan bir futbolcunun topa vuruş anını izleyeceksiniz. Vuruşun hemen ardından simülasyon duracak ve karşınıza bir soru çıkacak.
 
-Simülasyon akarken hız değişimlerini ve oluşan yörüngeleri soldaki panelden takip edebilirsiniz. Süreci daha detaylı incelemek isterseniz, alt kısımdaki kontrollerle simülasyonu dilediğiniz an durdurabilir, tekrar oynatabilir veya sıfırlayıp soru ekranına dönebilirsiniz. Unutmayın, tek seferde sonuca ulaşmak zorunda değilsiniz; sistemi sıfırlayarak farklı kuvvetleri dilediğiniz kadar tekrar deneyebilirsiniz.
+•  Simülasyon akarken hız değişimlerini ve oluşan yörüngeleri soldaki panelden takip edebilirsiniz.
+•  Alt kısımdaki kontrollerle simülasyonu dilediğiniz an durdurabilir, tekrar oynatabilir veya sıfırlayıp soru ekranına dönebilirsiniz.
+•  Uçuş tamamlandığında alt kısımda belirecek olan zaman çubuğunu sağa sola kaydırarak anı ileri-geri sarabilir; topun hızını, üzerindeki kuvvetleri ve yörüngesini dilediğiniz saniyede durdurarak detaylıca inceleyebilir durduğu yerden devam etmesini sağlayabilirsiniz.
+• Unutmayın, tek seferde sonuca ulaşmak zorunda değilsiniz; sistemi sıfırlayarak farklı kuvvetleri dilediğiniz kadar tekrar deneyebilirsiniz.
 
-Araştırmamıza değerli katkılarınız için şimdiden teşekkür ederiz. 'Devam Et' butonuna tıklayarak simülasyona başlayabilirsiniz."
+Araştırmamıza değerli katkılarınız için şimdiden teşekkür ederiz. ""Devam Et"" butonuna tıklayarak simülasyona başlayabilirsiniz."
 POPUP_INTRO_BTN,"Devam Et"
-KICK_PANEL_TITLE,"Top havada"
-KICK_PANEL_INTRO,"Futbolcu az önce topa vurdu ve top şu an havada.
+KICK_PANEL_TITLE,"Futbolcu az önce topa vurdu ve top şu an havada."
+KICK_PANEL_INTRO,"Lütfen topa etki ettiğini düşündüğünüz tüm kuvvetleri işaretleyip aşağıdaki yeşil butona tıklayın. Top, tamamen sizin seçtiğiniz kuvvetlere göre hareket edecektir.
 
-Lütfen topa etki ettiğini düşündüğünüz tüm kuvvetleri işaretleyip aşağıdaki yeşil butona tıklayın. Top, tamamen sizin seçtiğiniz kuvvetlere göre hareket edecektir.
-
-• Simülasyon akarken soldaki panelden hız değişimini gözlemlemeyi unutmayın.
-• Ekrandaki kesikli çizgi (gerçek yörünge) ile kendi oluşturduğunuz yörüngeyi kolayca karşılaştırabilirsiniz."
+• Simülasyon akarken soldaki panelden hız değişimini gözlemlemeyi unutmayınız.
+• Ekrandaki kesikli çizgi (gerçek yörünge) ile kendi oluşturduğunuz yörüngeyi kolayca karşılaştırabilirsiniz.
+• Uçuş tamamlandığında alt kısımda belirecek olan zaman çubuğunu kaydırarak hareketi ileri-geri sarabilirsiniz.
+• Detaylı bir inceleme yapmak için alt kısımdaki ""Durdur"", ""Devam"" ve ""Sıfırla"" tuşlarını dilediğiniz zaman kullanabilirsiniz."
 KICK_PANEL_QUESTION,"Topa hangi kuvvetler etki ediyor?"
 KICK_PANEL_RUN_BTN,"Ne olacağını gör"
 FORCE_GRAVITY_TITLE,"Yerçekiminden kaynaklanan aşağı yönlü kuvvet"

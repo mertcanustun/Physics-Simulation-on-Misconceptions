@@ -28,6 +28,18 @@ extends Resource
 ## anon anahtar GİZLİ DEĞİLDİR — web build'e gömülüp herkese görünür olabilir;
 ## güvenlik anahtarın gizliliğinden değil, RLS politikasından gelir (yalnızca
 ## ekleme izni var, okuma/silme yok — sızsa bile kimse veriyi geri okuyamaz).
+
+# --- ZAMAN ÇUBUĞU (SLIDER) INSPECTOR AYARLARI ---
+@export_group("İnceleme Çubuğu (Zaman Tüneli)")
+@export var slider_width: int = 500
+@export var slider_offset_y: int = 90
+@export var slider_bg: Color = Color("1a1d24")
+
+@export_group("Arayüz Metinleri")
+@export var text_velocity_arrow: String = "Hız"
+@export var text_hud_vx: String = "Yatay Hız"
+@export var text_hud_vy: String = "Dikey Hız"
+
 @export_group("Telemetri Sunucusu (Supabase)")
 @export var supabase_url: String = ""            ## ör: https://xxxxxxxx.supabase.co
 @export var supabase_anon_key: String = ""       ## Project Settings → API → "anon public"
@@ -75,7 +87,11 @@ extends Resource
 @export_group("Oynatma")
 @export_range(0.05, 2.0, 0.01) var time_scale: float = 0.42   ## sahnenin oynatma hızı (1.0 = gerçek zaman)
 
+@export_group("Kamera ve Görünüm")
+@export_range(50.0, 600.0, 10.0, "suffix:px") var camera_origin_x: float = 330.0 ## Oyuncunun sol kenara uzaklığı. Kamerayı sağa kaydırmak için bu değeri küçültün (örn: 200).
+
 @export_group("Vektör Okları")
+@export var draw_arrows_behind_ball: bool = false ## Oklar topun üstüne değil, arkasına (altına) çizilsin
 @export_range(1.0, 30.0, 0.1, "suffix:px per m/s²") var arrow_scale: float = 7.2   ## okların uzunluk ölçeği
 @export_range(20.0, 400.0, 5.0, "suffix:px") var arrow_max_px: float = 150.0       ## ok en fazla bu kadar uzayabilir
 @export_range(0.3, 3.0, 0.05, "suffix:×") var arrow_head_ratio: float = 1.0        ## ok ucu / gövde oranı
