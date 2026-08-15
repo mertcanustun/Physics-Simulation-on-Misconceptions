@@ -376,22 +376,35 @@ func _process(delta: float) -> void:
 			want = maxf(Physics.cfg.camera_start_zoom / max_divisor, dynamic_min_zoom)
 			
 		elif Physics.cfg.dynamic_zoom_mode:
-			# TEST MODU 2: MESAFEYE (POSITION) BAĞLI BÖLME (En Kararlı Mod)
+			# TEST MODU 2: MESAFEYE (POSITION) BAĞLI BÖLME
 			var scale_divisor_y := 1.0
 			var scale_divisor_x := 1.0
 			
 			if bpos.y > Physics.cfg.altitude_zoom_threshold:
 				var excess_y := bpos.y - Physics.cfg.altitude_zoom_threshold
-				# BURASI AYNI: Normal factor kullanılıyor (0.040)
 				scale_divisor_y += excess_y * Physics.cfg.altitude_zoom_factor
 				
 			if bpos.x > Physics.cfg.distance_zoom_threshold:
 				var excess_x := bpos.x - Physics.cfg.distance_zoom_threshold
-				# BURASI AYNI: Normal factor kullanılıyor (0.040)
 				scale_divisor_x += excess_x * Physics.cfg.distance_zoom_factor
 				
 			var max_divisor := maxf(scale_divisor_x, scale_divisor_y)
-			want = maxf(Physics.cfg.camera_start_zoom / max_divisor, dynamic_min_zoom)
+			
+			# 1. Aşama: Senin ayarladığın standart zoom formülü
+			var target_zoom := Physics.cfg.camera_start_zoom / max_divisor
+			
+			# 2. Aşama: WEB İÇİN GÜVENLİK FİLESİ (Topun ekrandan çıkmasını KESİN engeller)
+			var safe_w := size.x - 330.0 - 150.0 # Sağ kenardan 150px güvenlik payı bırak
+			var safe_h := _ground_y() - 100.0    # Üst kenardan 100px güvenlik payı bırak
+			
+			var req_zoom_x := safe_w / maxf(bpos.x * _base_scale(), 0.001)
+			var req_zoom_y := safe_h / maxf(bpos.y * _base_scale(), 0.001)
+			
+			# Topun ekrana sığması için gereken ZORUNLU uzaklaşma miktarı
+			var force_fit_zoom := minf(req_zoom_x, req_zoom_y)
+			
+			# Formülün sonucu ile güvenlik filesini karşılaştır, hangisi daha çok uzaklaştırıyorsa onu seç!
+			want = maxf(minf(target_zoom, force_fit_zoom), dynamic_min_zoom)
 			
 		else:
 			# ESKİ MOD: Otomatik sığdırma (fit)
