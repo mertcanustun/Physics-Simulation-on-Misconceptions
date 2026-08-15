@@ -12,5 +12,6 @@ max_y = 150.0
 max_x = 150.0
 max_watch_seconds = 13.0
 camera_origin_x = 200.0
+draw_arrows_behind_ball = true
 altitude_zoom_threshold = 20.0
 hud_choice_font_size = 10
