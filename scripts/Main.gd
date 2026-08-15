@@ -1279,6 +1279,8 @@ func _on_change_answer() -> void:
 	Tele.answer_change()
 	_sync_telemetry()   # gol alınmadan da bu ana kadarki deneme(ler) Supabase'e gitsin
 	result_center.visible = false
+	if time_panel:
+		time_panel.visible = false
 	_stop_wind()
 	field.reset()
 	_reset_hud_values()
