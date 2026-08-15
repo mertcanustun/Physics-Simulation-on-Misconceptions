@@ -975,14 +975,34 @@ func _instant_camera_update(bpos: Vector2, vnow: Vector2) -> void:
 		var max_divisor := maxf(scale_divisor_x, scale_divisor_y)
 		want = maxf(Physics.cfg.camera_start_zoom / max_divisor, dynamic_min_zoom)
 	elif Physics.cfg.dynamic_zoom_mode:
-		var scale_divisor_y := 1.0
-		var scale_divisor_x := 1.0
-		if bpos.y > Physics.cfg.altitude_zoom_threshold:
-			scale_divisor_y += (bpos.y - Physics.cfg.altitude_zoom_threshold) * Physics.cfg.altitude_zoom_factor
-		if bpos.x > Physics.cfg.distance_zoom_threshold:
-			scale_divisor_x += (bpos.x - Physics.cfg.distance_zoom_threshold) * Physics.cfg.distance_zoom_factor
-		var max_divisor := maxf(scale_divisor_x, scale_divisor_y)
-		want = maxf(Physics.cfg.camera_start_zoom / max_divisor, dynamic_min_zoom)
+			# TEST MODU 2: MESAFEYE (POSITION) BAĞLI BÖLME
+			var scale_divisor_y := 1.0
+			var scale_divisor_x := 1.0
+			
+			if bpos.y > Physics.cfg.altitude_zoom_threshold:
+				var excess_y := bpos.y - Physics.cfg.altitude_zoom_threshold
+				scale_divisor_y += excess_y * Physics.cfg.altitude_zoom_factor
+				
+			if bpos.x > Physics.cfg.distance_zoom_threshold:
+				var excess_x := bpos.x - Physics.cfg.distance_zoom_threshold
+				scale_divisor_x += excess_x * Physics.cfg.distance_zoom_factor
+				
+			var max_divisor := maxf(scale_divisor_x, scale_divisor_y)
+			
+			# 1. Aşama: Senin ayarladığın standart zoom formülü
+			var target_zoom := Physics.cfg.camera_start_zoom / max_divisor
+			
+			# 2. Aşama: WEB İÇİN GÜVENLİK FİLESİ (Slider ile sarmada da devrede)
+			var safe_w := size.x - 330.0 - 150.0 
+			var safe_h := _ground_y() - 100.0    
+			
+			var req_zoom_x := safe_w / maxf(bpos.x * _base_scale(), 0.001)
+			var req_zoom_y := safe_h / maxf(bpos.y * _base_scale(), 0.001)
+			
+			var force_fit_zoom := minf(req_zoom_x, req_zoom_y)
+			
+			# Güvenli olanı seç ve 'want' (istenen zoom) değerine ata
+			want = maxf(minf(target_zoom, force_fit_zoom), dynamic_min_zoom)
 	else:
 		var prog := clampf(maxf(bpos.x / maxf(fit_maxx, 1.0), bpos.y / maxf(fit_maxy, 1.0)), 0.0, 1.0)
 		want = lerpf(Physics.cfg.camera_start_zoom, maxf(fit_zoom, dynamic_min_zoom), prog)
