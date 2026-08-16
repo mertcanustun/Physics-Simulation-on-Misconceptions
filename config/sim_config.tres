@@ -5,6 +5,9 @@
 
 [resource]
 script = ExtResource("1")
+btn_fast_forward_text = Color(0.52913266, 0.091452084, 0.85500556, 1)
+btn_replay_text = Color(0.9607843, 0.61960787, 0.043137256, 1)
+show_anim_button = false
 supabase_url = "https://sohyahkyrlzekxiodetn.supabase.co"
 supabase_anon_key = "sb_publishable_Rd1eagPKHe9VLSJtj0K_lA_FpK9Ctw4"
 drag_k = 0.015
@@ -13,5 +16,6 @@ max_x = 150.0
 max_watch_seconds = 13.0
 camera_origin_x = 200.0
 draw_arrows_behind_ball = true
+display_real_time = true
+show_kinematic_graphs = false
 altitude_zoom_threshold = 20.0
-hud_choice_font_size = 10

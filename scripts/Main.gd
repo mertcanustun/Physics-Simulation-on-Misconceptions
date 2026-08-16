@@ -19,6 +19,14 @@ var sim_cfg: SimConfig = preload("res://config/sim_config.tres")
 @onready var v0: float = sim_cfg.v0
 @onready var angle: float = sim_cfg.angle_deg
 @onready var kick_force: float = sim_cfg.impetus_acc
+var time_lbl: Label
+var graph_panel: PanelContainer
+var graph_tabs: TabContainer
+var show_graph_x := true
+var show_graph_y := true
+var show_graph_net := true
+var pop_slider: HSlider
+var mini_view: Control
 var time_panel: PanelContainer # Yeni yüzen panelimiz
 var field: FieldView
 var entry_center: CenterContainer
@@ -41,6 +49,8 @@ var intro_modal_center: CenterContainer
 var intro_panel: PanelContainer
 var intro_continue_btn: Button
 var btn_info_icon: Button
+var btn_graph_icon: Button
+var btn_fast_forward: Button
 var is_first_intro := true
 var q_intro: Label
 var q_hint: Label
@@ -96,18 +106,53 @@ const TOP_BAR_H := 56.0
 const BOTTOM_BAR_H := 90.0
 
 func _process(_delta: float) -> void:
-	# Eğer uçuş devam ettirildiyse (Resume), kaydırıcı çubuğu da animasyonla birlikte ilerlet
+	# 1. Slider'ı güncelle
 	if field and field.playing and time_panel and time_panel.visible:
 		time_slider.set_value_no_signal(field.play_t)
-		# Sona ulaşırsa pop-up'ı tekrar çıkart
 		if field.play_t >= time_slider.max_value - 0.05:
 			result_center.visible = true
 			btn_pause.text = S.t("CTRL_PAUSE")
-	
-	# Bilgi ikonu görünür olduğu sürece HUD kartının tam 15 piksel altına kilitlensin
+			
+	# 2. İkonları HUD Kartının Altına Kilitle
 	if btn_info_icon != null and btn_info_icon.visible and hud_card != null:
 		btn_info_icon.position = Vector2(24, hud_card.position.y + hud_card.size.y + 15)
 		
+		# Grafikler butonu "i" ikonunun hemen sağında çıksın
+		# Grafikler butonu "i" ikonunun hemen sağında çıksın
+		if btn_graph_icon != null:
+			# Eğer Teşekkür ekranı (thanks_center) görünürse, butonu ZORLA gizle
+			var can_show_graph = field and (field.playing or field.finished or time_panel.visible) and not thanks_center.visible
+			btn_graph_icon.visible = sim_cfg.show_kinematic_graphs and can_show_graph
+			if btn_graph_icon.visible:
+				btn_graph_icon.position = Vector2(btn_info_icon.position.x + btn_info_icon.size.x + 10, btn_info_icon.position.y)
+
+	# 3. Zaman Metnini Güncelle
+	if time_lbl:
+		time_lbl.visible = sim_cfg.show_time_display
+		if field and time_panel.visible:
+			var display_t = field.play_t
+			if sim_cfg.display_real_time and field.time_scale > 0.0:
+				display_t = field.play_t / field.time_scale
+			time_lbl.text = "%.2f s" % display_t
+			
+	# 4. Grafikler Açıksa Canlı Olarak Her Şeyi Güncelle
+	if graph_panel and graph_panel.visible:
+		var active_tab = graph_tabs.get_current_tab_control()
+		if active_tab:
+			if active_tab.name == "Hepsi":
+				for child in active_tab.get_child(0).get_children():
+					child.queue_redraw()
+			else:
+				active_tab.queue_redraw()
+			
+		if mini_view:
+			mini_view.queue_redraw()
+			
+		if pop_slider and field.has_method("get_flight_duration"):
+			if pop_slider.max_value != field.get_flight_duration():
+				pop_slider.max_value = field.get_flight_duration()
+			pop_slider.set_value_no_signal(field.play_t)
+			
 func _ready() -> void:
 	print("=== kicked-ball build %s | metin: %d anahtar (%s) | impetus_acc=%s drag_k=%s goal_x=%s ==="
 		% [BUILD_ID, S.count(), S.source_name(), Physics.cfg.impetus_acc, Physics.cfg.drag_k, Physics.cfg.goal_x])
@@ -122,6 +167,7 @@ func _ready() -> void:
 	_build_thanks_modal()
 	_build_control_bar()
 	_build_save_dialog()
+	_build_graphs() # Grafik panelini arka planda inşa et
 	resized.connect(_fit_question_panel)
 	
 	# --- YENİ EKLENEN SATIRLAR ---
@@ -382,6 +428,16 @@ func _build_intro_modal() -> void:
 	btn_info_icon.pressed.connect(_on_info_icon_clicked)
 	add_child(btn_info_icon)
 	
+	# --- YENİ EKLENEN: GRAFİK POP-UP BUTONU ---
+	btn_graph_icon = Button.new()
+	btn_graph_icon.text = "Grafikler"
+	btn_graph_icon.custom_minimum_size = Vector2(90, 40)
+	_style_button(btn_graph_icon, CARD, Color("f59e0b"), Color(1, 1, 1, 0.1))
+	btn_graph_icon.visible = false
+	btn_graph_icon.z_index = 50 # Bütün pop-up'ların ve şeffaf katmanların ÜSTÜNDE durmasını sağlar
+	btn_graph_icon.pressed.connect(_on_graph_icon_clicked)
+	add_child(btn_graph_icon)
+	
 func _on_intro_modal_continue() -> void:
 	# Küçülme efekti için paneli geçici olarak CenterContainer'dan çıkarıp serbest bırakıyoruz
 	var start_pos = intro_panel.global_position
@@ -485,6 +541,7 @@ func _force_box(parent: VBoxContainer, key: String, display_title: String, sub: 
 func _build_result_modal() -> void:
 	result_center = CenterContainer.new()
 	result_center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	result_center.mouse_filter = Control.MOUSE_FILTER_IGNORE # Tıklamaların alt katmandaki butonlara (Grafikler vb.) geçmesine izin verir!
 	result_center.visible = false
 	add_child(result_center)
 	var panel := PanelContainer.new()
@@ -578,6 +635,10 @@ func _on_finish_sim() -> void:
 		time_panel.visible = false
 	if btn_info_icon:
 		btn_info_icon.visible = false
+	if btn_graph_icon:
+		btn_graph_icon.visible = false
+	if graph_panel:
+		graph_panel.visible = false # Açık unutulmuşsa dev grafik panelini de kapatır
 
 ## Biriken telemetri olaylarını Supabase'e gönderir (bkz. docs/supabase-telemetri.md).
 ## Yalnızca EN SON çağrıdan bu yana eklenen olaylar gider (Telemetry.gd
@@ -624,21 +685,36 @@ func _build_control_bar() -> void:
 	h.add_theme_constant_override("separation", 10)
 	control_bar.add_child(h)
 	btn_start = Button.new()
+	
 	btn_start.text = S.t("CTRL_REPLAY")
 	btn_start.custom_minimum_size = Vector2(160, 40)
-	_style_button(btn_start, ACCENT_DK, Color.WHITE)
+	# Arka plan CARD2 (Gri), Yazı rengi Inspector'dan
+	_style_button(btn_start, CARD2, sim_cfg.btn_replay_text, Color(sim_cfg.btn_replay_text, 0.55))
 	btn_start.pressed.connect(_on_replay_or_run)
 	h.add_child(btn_start)
+	btn_start.visible = sim_cfg.show_replay_button
+
 	btn_pause = Button.new()
 	btn_pause.text = S.t("CTRL_PAUSE")
 	btn_pause.custom_minimum_size = Vector2(120, 40)
-	_style_button(btn_pause, CARD2, DANGER, Color(DANGER, 0.55))
+	_style_button(btn_pause, CARD2, sim_cfg.btn_pause_text, Color(sim_cfg.btn_pause_text, 0.55))
 	btn_pause.pressed.connect(_on_pause_toggle)
 	h.add_child(btn_pause)
+	
+	# --- YENİ EKLENEN: SONA GİT BUTONU ---
+	btn_fast_forward = Button.new()
+	btn_fast_forward.text = "Sona Git"
+	btn_fast_forward.custom_minimum_size = Vector2(100, 40)
+	_style_button(btn_fast_forward, CARD2, sim_cfg.btn_fast_forward_text, Color(sim_cfg.btn_fast_forward_text, 0.55))
+	btn_fast_forward.pressed.connect(_on_fast_forward)
+	h.add_child(btn_fast_forward)
+	btn_fast_forward.visible = sim_cfg.show_fast_forward_button
+	# ------------------------------------
+	
 	btn_reset = Button.new()
 	btn_reset.text = S.t("CTRL_RESET")
 	btn_reset.custom_minimum_size = Vector2(120, 40)
-	_style_button(btn_reset, CARD2, INFO, Color(INFO, 0.55))
+	_style_button(btn_reset, CARD2, sim_cfg.btn_reset_text, Color(sim_cfg.btn_reset_text, 0.55))
 	btn_reset.pressed.connect(_on_reset_sim)
 	h.add_child(btn_reset)
 	
@@ -674,6 +750,11 @@ func _build_control_bar() -> void:
 	time_slider.step = 0.02
 	time_slider.value_changed.connect(_on_time_scrub)
 	time_slider_box.add_child(time_slider)
+	# Zamanı gösteren metin (Slider'ın sağ tarafına eklenir)
+	time_lbl = _label("0.00 s", 14, ACCENT)
+	time_lbl.custom_minimum_size = Vector2(50, 0)
+	time_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	time_slider_box.add_child(time_lbl)
 	# ----------------------------------------------------------------
 	
 	# --- AYARLAR: giriş animasyonu ve ses aç/kapa ---
@@ -681,6 +762,7 @@ func _build_control_bar() -> void:
 	btn_anim.custom_minimum_size = Vector2(150, 40)
 	btn_anim.pressed.connect(_on_toggle_anim)
 	h.add_child(btn_anim)
+	btn_anim.visible = sim_cfg.show_anim_button
 	btn_sound = Button.new()
 	btn_sound.custom_minimum_size = Vector2(120, 40)
 	btn_sound.pressed.connect(_on_toggle_sound)
@@ -691,7 +773,8 @@ func _build_control_bar() -> void:
 ## deneme KAYDEDİLMEZ — araştırma verisi şişmesin); henüz uçuş yoksa normal
 ## atışı başlatır. Eskiden bu düğme her basışta _on_run çağırıyordu.
 func _on_replay_or_run() -> void:
-	if field and field.finished:
+	# Eğer uçuş bittiyse VEYA şu an top havadaysa (playing), aynı uçuşu başa sar
+	if field and (field.finished or field.playing):
 		_on_replay()
 	else:
 		_on_run()
@@ -717,13 +800,13 @@ func _on_toggle_sound() -> void:
 func _refresh_toggle_buttons() -> void:
 	if btn_anim:
 		btn_anim.text = S.t("CTRL_ANIM_ON") if anim_enabled else S.t("CTRL_ANIM_OFF")
-		_style_button(btn_anim, CARD2, ACCENT if anim_enabled else TXT_MUTED,
-			Color(ACCENT if anim_enabled else TXT_MUTED, 0.55))
+		var col_a = sim_cfg.btn_toggle_on_text if anim_enabled else sim_cfg.btn_toggle_off_text
+		_style_button(btn_anim, CARD2, col_a, Color(col_a, 0.55))
 	if btn_sound:
 		btn_sound.text = S.t("CTRL_SOUND_ON") if sound_enabled else S.t("CTRL_SOUND_OFF")
-		_style_button(btn_sound, CARD2, ACCENT if sound_enabled else TXT_MUTED,
-			Color(ACCENT if sound_enabled else TXT_MUTED, 0.55))
-
+		var col_s = sim_cfg.btn_toggle_on_text if sound_enabled else sim_cfg.btn_toggle_off_text
+		_style_button(btn_sound, CARD2, col_s, Color(col_s, 0.55))
+		
 ## SORU PANELİ: seçim aşamasında ORTADA (büyük), atış başlayınca SOLA sabitlenir
 ## (kaybolmaz — öğrenci ne seçtiğini uçuş boyunca görebilir).
 func _center_question() -> void:
@@ -736,8 +819,8 @@ func _center_question() -> void:
 	q_hint.visible = false
 	_set_force_rows_enabled(true)
 	kick_center.visible = true
-	btn_start.visible = true
-	btn_start.disabled = false
+	btn_start.visible = sim_cfg.show_replay_button # Inspector ayarını dinler
+	btn_start.disabled = (sim_cfg.lock_controls_until_answered and attempt == 0)
 	_update_choice_summary()
 	_fit_question_panel()
 
@@ -773,10 +856,10 @@ func _hide_question() -> void:
 		kick_panel.get_parent().remove_child(kick_panel)
 		kick_center.add_child(kick_panel)
 	kick_panel.custom_minimum_size = Vector2(520, 0)
-	btn_start.visible = true
-	btn_start.disabled = true          # uçuş sırasında atış yapılamaz
+	btn_start.visible = sim_cfg.show_replay_button 
+	btn_start.disabled = false         # ARTIK KİLİTLİ DEĞİL: Uçuş sırasında da tıklanabilir
 	_update_choice_summary()
-
+	
 func _update_choice_summary() -> void:
 	if hud_choice == null:
 		return
@@ -1081,6 +1164,7 @@ func _on_continue() -> void:
 		
 	Tele.begin_session(participant_code, group, Codes.has_seen_topic(c), official)
 	attempt = 0
+	_update_control_bar_lock() # Yeni kullanıcı girdiği an alt çubuğu kilitle
 	var _mode_txt := "VERİ TOPLANIYOR" if official else "DENEME MODU — veri kaydedilmiyor"
 	mode_banner.text = ""   # veri kaydı bilgisi öğrenciye gösterilmez (F9 ile görülür)
 	mode_banner.add_theme_color_override("font_color", GREEN if official else Color("c2660a"))
@@ -1098,7 +1182,7 @@ func _on_continue() -> void:
 	intro_modal_center.visible = true
 
 func _on_intro_done() -> void:
-	btn_start.disabled = false
+	btn_start.disabled = (sim_cfg.lock_controls_until_answered and attempt == 0)
 	if field.playing or field.finished:
 		return   # uçuş bir şekilde başladıysa soru kutusunu ÜSTÜNE açma
 	Tele.decision_start(attempt + 1)
@@ -1195,6 +1279,7 @@ func _on_admin_stop() -> void:
 
 func _on_run() -> void:
 	attempt += 1
+	_update_control_bar_lock() # Öğrenci cevabını verdi, kilidi tamamen kaldır
 	var g := cb_gravity.button_pressed
 	var k := cb_kick.button_pressed
 	var a := cb_air.button_pressed
@@ -1256,6 +1341,11 @@ func _on_flight_finished() -> void:
 	# BAŞARISIZ ekran: yalnızca "Kuvvetleri Değiştir"
 	btn_finish.visible = gol
 	result_center.visible = true
+	
+	# Uçuş bittiğinde Tekrar butonunu tıklanabilir hale getir
+	if btn_start:
+		btn_start.disabled = false
+		
 	# Uçuş bittiğinde sarma çubuğunu göster
 	if field.has_method("get_flight_duration"):
 		time_slider.max_value = field.get_flight_duration()
@@ -1386,3 +1476,359 @@ func _on_reset_sim() -> void:
 	field.reset()
 	_reset_hud_values()
 	_back_to_question()
+
+func _on_graph_icon_clicked() -> void:
+	if not graph_panel: return
+	graph_panel.visible = not graph_panel.visible
+	if graph_panel.visible:
+		# Açıldığında ekranın tam ortasında şık bir pop-up olarak belirmesini sağla
+		graph_panel.global_position = (size - graph_panel.size) / 2.0
+
+func _on_fast_forward() -> void:
+	# Eğer uçuş devam ediyorsa zamanı uçuşun en sonuna ışınla
+	if field and field.playing:
+		if field.has_method("get_flight_duration"):
+			# Bitmesine milisaniyeler kala bırakıyoruz ki motor doğal bitiş sinyallerini tetikleyebilsin
+			field.play_t = field.get_flight_duration() - 0.01
+			
+func _redraw_all_graphs(_dummy = null) -> void:
+	if graph_panel and graph_panel.visible:
+		var active_tab = graph_tabs.get_current_tab_control()
+		if active_tab:
+			if active_tab.name == "Hepsi":
+				for child in active_tab.get_child(0).get_children():
+					child.queue_redraw()
+			else:
+				active_tab.queue_redraw()
+
+func _build_graphs() -> void:
+	graph_panel = PanelContainer.new()
+	graph_panel.add_theme_stylebox_override("panel", _card_style(16, Color(0.1, 0.11, 0.14, 0.98)))
+	graph_panel.custom_minimum_size = Vector2(960, 560) # Dev boyuta çıkarıldı
+	graph_panel.visible = false
+	graph_panel.z_index = 55
+	add_child(graph_panel)
+
+	var outer_v = VBoxContainer.new()
+	outer_v.add_theme_constant_override("separation", 12)
+	graph_panel.add_child(outer_v)
+	
+	# Üst Bar (Başlık ve Kapatma Butonu)
+	var top_h = HBoxContainer.new()
+	var title = _label("Kinematik Grafikler ve Laboratuvar İncelemesi", 18, TXT)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top_h.add_child(title)
+	
+	var close_btn = Button.new()
+	close_btn.text = "X"
+	close_btn.custom_minimum_size = Vector2(40, 30)
+	_style_button(close_btn, CARD2, DANGER)
+	close_btn.pressed.connect(func(): graph_panel.visible = false)
+	top_h.add_child(close_btn)
+	outer_v.add_child(top_h)
+	
+	# X, Y ve Net Seçim Filtreleri
+	var toggle_row = HBoxContainer.new()
+	toggle_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	toggle_row.add_theme_constant_override("separation", 30)
+	
+	var chk_x = CheckBox.new(); chk_x.text = "X (Yatay) Ekseni"; chk_x.button_pressed = show_graph_x
+	var chk_y = CheckBox.new(); chk_y.text = "Y (Dikey) Ekseni"; chk_y.button_pressed = show_graph_y
+	var chk_net = CheckBox.new(); chk_net.text = "Net (Bileşke)"; chk_net.button_pressed = show_graph_net
+	
+	chk_x.add_theme_color_override("font_color", Color("f59e0b"))
+	chk_y.add_theme_color_override("font_color", Color("a855f7"))
+	chk_net.add_theme_color_override("font_color", Color(1, 1, 1, 0.9))
+	
+	chk_x.toggled.connect(func(on): show_graph_x = on; _redraw_all_graphs())
+	chk_y.toggled.connect(func(on): show_graph_y = on; _redraw_all_graphs())
+	chk_net.toggled.connect(func(on): show_graph_net = on; _redraw_all_graphs())
+	
+	toggle_row.add_child(chk_x); toggle_row.add_child(chk_y); toggle_row.add_child(chk_net)
+	outer_v.add_child(toggle_row)
+
+	# Orta Bölüm (Sol: Grafikler, Sağ: Mini-Görünüm)
+	var main_h = HBoxContainer.new()
+	main_h.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	main_h.add_theme_constant_override("separation", 15)
+	outer_v.add_child(main_h)
+
+	# Sol Taraf: Grafik Sekmeleri
+	graph_tabs = TabContainer.new()
+	graph_tabs.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	graph_tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	graph_tabs.add_theme_font_size_override("font_size", 14)
+	var sbt = StyleBoxFlat.new()
+	sbt.bg_color = Color(0, 0, 0, 0)
+	graph_tabs.add_theme_stylebox_override("panel", sbt)
+	main_h.add_child(graph_tabs)
+
+	var graph_names = ["Konum-Zaman", "Hız-Zaman", "İvme-Zaman", "Kuvvet-Zaman"]
+	for g_name in graph_names:
+		var c = Control.new()
+		c.name = g_name
+		c.draw.connect(_on_draw_graph.bind(c))
+		graph_tabs.add_child(c)
+		
+	# Hepsi (4'lü Izgara) Sekmesi
+	var hepsi_tab = MarginContainer.new()
+	hepsi_tab.name = "Hepsi"
+	hepsi_tab.add_theme_constant_override("margin_top", 10)
+	var grid = GridContainer.new()
+	grid.columns = 2
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	grid.add_theme_constant_override("h_separation", 15)
+	grid.add_theme_constant_override("v_separation", 15)
+	hepsi_tab.add_child(grid)
+	
+	for g_name in graph_names:
+		var mini_c = Control.new()
+		mini_c.name = "Hepsi_" + g_name
+		mini_c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		mini_c.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		mini_c.draw.connect(_on_draw_graph.bind(mini_c))
+		grid.add_child(mini_c)
+		
+	graph_tabs.add_child(hepsi_tab)
+		
+	# Sağ Taraf: Mini Simülasyon Görünümü
+	var right_v = VBoxContainer.new()
+	right_v.custom_minimum_size = Vector2(300, 0)
+	main_h.add_child(right_v)
+	
+	right_v.add_child(_label("Simülasyon (Anlık İzleme)", 13, TXT_MUTED))
+	mini_view = Control.new()
+	mini_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	mini_view.draw.connect(_on_draw_mini_view)
+	right_v.add_child(mini_view)
+
+	# Alt Bölüm: Entegre Zaman Kaydırıcısı (Slider)
+	var slider_row = HBoxContainer.new()
+	slider_row.add_theme_constant_override("separation", 10)
+	outer_v.add_child(slider_row)
+	
+	slider_row.add_child(_label("Zaman:", 14, TXT_MUTED))
+	pop_slider = HSlider.new()
+	pop_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pop_slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	pop_slider.step = 0.02
+	pop_slider.value_changed.connect(_on_time_scrub)
+	slider_row.add_child(pop_slider)
+
+func _on_draw_graph(c: Control) -> void:
+	if not field or field.predicted.is_empty(): return
+	
+	var is_pos = "Konum" in c.name
+	var is_vel = "Hız" in c.name
+	var is_acc = "İvme" in c.name
+	var is_frc = "Kuvvet" in c.name
+	var is_hepsi = "Hepsi" in c.name
+
+	# Eksen sayılarına yer açmak için sol taraftan pay (padding) bırakıyoruz
+	var rect = Rect2(45, 20, c.size.x - 55, c.size.y - 45)
+	c.draw_rect(rect, Color(0, 0, 0, 0.3)) 
+
+	var pts = field.predicted
+	var max_t = pts[-1]["t"]
+	if max_t <= 0: return
+
+	# 1. ADIM: TEMEL VERİLERİ (Zaman ve Konum) ÇEK
+	var t_arr = []
+	var x_arr = []
+	var y_arr = []
+	for pt in pts:
+		t_arr.append(pt["t"])
+		x_arr.append(pt["p"].x)
+		# Fizikte Y yukarı doğrudur. Godot'taki gibi eksi ile çarpmıyoruz!
+		y_arr.append(pt["p"].y) 
+		
+	# 2. ADIM: MERKEZİ FARK (TÜREV) FONKSİYONU
+	var get_deriv = func(vals: Array, times: Array) -> Array:
+		var deriv = []
+		var n = vals.size()
+		for i in range(n):
+			if i == 0 and n > 1:
+				var dt = times[1] - times[0]
+				deriv.append((vals[1] - vals[0]) / dt if dt > 0 else 0.0)
+			elif i == n - 1 and n > 1:
+				var dt = times[i] - times[i-1]
+				deriv.append((vals[i] - vals[i-1]) / dt if dt > 0 else 0.0)
+			else:
+				# Ortadaki noktalar için Merkezi Türev (Daha pürüzsüz sonuç verir)
+				var dt = times[i+1] - times[i-1]
+				deriv.append((vals[i+1] - vals[i-1]) / dt if dt > 0 else 0.0)
+		return deriv
+		
+	# 3. ADIM: ZİNCİRLEME TÜREV AL (Matematiksel Kanıt)
+	var vx_arr = get_deriv.call(x_arr, t_arr) # v = dx/dt
+	var vy_arr = get_deriv.call(y_arr, t_arr) 
+	
+	var ax_arr = get_deriv.call(vx_arr, t_arr) # a = dv/dt
+	var ay_arr = get_deriv.call(vy_arr, t_arr)
+
+	var vals_x = PackedVector2Array()
+	var vals_y = PackedVector2Array()
+	var vals_net = PackedVector2Array()
+	var min_val = 0.0; var max_val = 0.0001
+
+	var mass = 0.43 # Topun Ortalama Kütlesi (F = m*a için)
+
+	for i in range(pts.size()):
+		var t = t_arr[i]
+		var vx = 0.0; var vy = 0.0
+
+		if is_pos:
+			vx = x_arr[i]; vy = y_arr[i]
+		elif is_vel:
+			vx = vx_arr[i]; vy = vy_arr[i]
+		elif is_acc:
+			vx = ax_arr[i]; vy = ay_arr[i]
+		elif is_frc: # F = m * a
+			vx = ax_arr[i] * mass; vy = ay_arr[i] * mass
+
+		var vnet = sqrt(vx*vx + vy*vy) # Bileşke (Net) Büyüklük
+		
+		# Skalayı (Eksen limitlerini) sadece aktif olan filtrelere göre ayarla
+		var active_vals = []
+		if show_graph_x: active_vals.append(vx)
+		if show_graph_y: active_vals.append(vy)
+		if show_graph_net: active_vals.append(vnet)
+		if active_vals.is_empty(): active_vals.append(0.0)
+			
+		var local_min = active_vals[0]
+		var local_max = active_vals[0]
+		for val in active_vals:
+			local_min = minf(local_min, val)
+			local_max = maxf(local_max, val)
+
+		# Ani sekme/vuruş fırlamalarını (spike) sınırla ki grafik ezilmesin
+		if is_acc:
+			local_min = clampf(local_min, -40.0, 40.0)
+			local_max = clampf(local_max, -40.0, 40.0)
+		elif is_frc:
+			local_min = clampf(local_min, -20.0, 20.0)
+			local_max = clampf(local_max, -20.0, 20.0)
+
+		if i == 0:
+			min_val = local_min; max_val = local_max
+		else:
+			min_val = minf(min_val, local_min); max_val = maxf(max_val, local_max)
+			
+		# Sadece Zaman Kaydırıcısına (Slider) kadar olan kısmı çiz
+		if t <= field.play_t:
+			var nx = t / max_t
+			vals_x.append(Vector2(nx, vx))
+			vals_y.append(Vector2(nx, vy))
+			vals_net.append(Vector2(nx, vnet))
+
+	var r = max_val - min_val
+	if r == 0: r = 1.0
+	min_val -= r * 0.1; max_val += r * 0.1; r = max_val - min_val
+
+	var f = get_theme_default_font()
+	
+	# Y Ekseni Etiketleri (Sayılar)
+	if f:
+		c.draw_string(f, Vector2(0, rect.position.y + 10), "%.1f" % max_val, HORIZONTAL_ALIGNMENT_RIGHT, 38, 11, Color(1,1,1,0.6))
+		c.draw_string(f, Vector2(0, rect.position.y + rect.size.y), "%.1f" % min_val, HORIZONTAL_ALIGNMENT_RIGHT, 38, 11, Color(1,1,1,0.6))
+
+	# Sıfır Çizgisi
+	var zero_y = rect.position.y + rect.size.y
+	if min_val < 0 and max_val > 0:
+		zero_y = rect.position.y + rect.size.y * (1.0 - (0.0 - min_val) / r)
+		c.draw_line(Vector2(rect.position.x, zero_y), Vector2(rect.position.x + rect.size.x, zero_y), Color(1, 1, 1, 0.4), 1.0)
+		if f:
+			c.draw_string(f, Vector2(0, zero_y + 4), "0", HORIZONTAL_ALIGNMENT_RIGHT, 38, 11, Color(1,1,1,0.6))
+
+	# Çizgileri Çizme Yardımcısı
+	var draw_line_arrays = func(arr, color, thickness):
+		var poly = PackedVector2Array()
+		for i in range(arr.size()):
+			var px = rect.position.x + arr[i].x * rect.size.x
+			# Grafik dışına taşmayı engelle
+			var clamped_y = clampf(arr[i].y, min_val, max_val)
+			var py = rect.position.y + rect.size.y * (1.0 - (clamped_y - min_val) / r)
+			poly.append(Vector2(px, py))
+		if poly.size() > 1:
+			c.draw_polyline(poly, color, thickness, true)
+			
+	if show_graph_x: draw_line_arrays.call(vals_x, Color("f59e0b"), 2.0)
+	if show_graph_y: draw_line_arrays.call(vals_y, Color("a855f7"), 2.0)
+	if show_graph_net: draw_line_arrays.call(vals_net, Color(1, 1, 1, 0.8), 2.5)
+
+	# Dikey Zaman İşaretçisi (Slider'ı takip eder)
+	var marker_x = rect.position.x + (field.play_t / max_t) * rect.size.x
+	c.draw_line(Vector2(marker_x, rect.position.y), Vector2(marker_x, rect.position.y + rect.size.y), Color.WHITE, 1.5)
+
+	# X Ekseni Etiketleri (Zaman)
+	if f:
+		c.draw_string(f, Vector2(rect.position.x, rect.position.y + rect.size.y + 14), "0s", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(1,1,1,0.6))
+		c.draw_string(f, Vector2(rect.position.x + rect.size.x - 20, rect.position.y + rect.size.y + 14), "%.1fs" % max_t, HORIZONTAL_ALIGNMENT_RIGHT, -1, 11, Color(1,1,1,0.6))
+		
+	# Hepsi sekmesindeysek küçük başlıklar ekle
+	if is_hepsi and f:
+		var title_str = c.name.replace("Hepsi_", "")
+		c.draw_string(f, Vector2(rect.position.x + 8, rect.position.y + 16), title_str, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1,1,1,0.8))
+		
+func _on_draw_mini_view() -> void:
+	if not field or field.predicted.is_empty(): return
+	var c = mini_view
+	var rect = Rect2(0, 0, c.size.x, c.size.y)
+	
+	c.draw_rect(rect, Color(0, 0, 0, 0.25), true) 
+	c.draw_rect(rect, Color(1, 1, 1, 0.08), false, 1.0) 
+	
+	var pts = field.predicted
+	var max_x = 0.001; var max_y = 0.001
+	for pt in pts:
+		max_x = maxf(max_x, pt["p"].x)
+		max_y = maxf(max_y, pt["p"].y)
+		
+	max_x = maxf(max_x, Physics.cfg.goal_x + 5.0) 
+	max_y = maxf(max_y, 10.0) 
+	
+	var pad = 15.0
+	var scale_f = minf((c.size.x - pad*2) / max_x, (c.size.y - pad*2) / max_y)
+	var origin = Vector2(pad, c.size.y - pad)
+	
+	c.draw_line(Vector2(0, origin.y), Vector2(c.size.x, origin.y), Color(1, 1, 1, 0.2), 1.0)
+	
+	var gx = origin.x + Physics.cfg.goal_x * scale_f
+	var gw = maxf(2.0 * scale_f, 4.0) 
+	c.draw_rect(Rect2(gx, origin.y - 12, gw, 12), Color(1, 1, 1, 0.5))
+	
+	var poly_full = PackedVector2Array(); var poly_active = PackedVector2Array()
+	
+	for pt in pts:
+		var p = origin + Vector2(pt["p"].x * scale_f, -pt["p"].y * scale_f)
+		poly_full.append(p)
+		if pt["t"] <= field.play_t:
+			poly_active.append(p)
+			
+	if poly_full.size() > 1:
+		c.draw_polyline(poly_full, Color(1, 1, 1, 0.15), 1.5, true)
+		
+	if poly_active.size() > 1:
+		c.draw_polyline(poly_active, Color("f59e0b"), 2.0, true)
+		
+	if poly_active.size() > 0:
+		c.draw_circle(poly_active[-1], 4.0, Color.WHITE)
+		c.draw_arc(poly_active[-1], 7.0, 0, TAU, 16, Color("f59e0b"), 1.5)
+
+func _update_control_bar_lock() -> void:
+	if not control_bar: return
+	
+	# Ayar aktifse ve henüz hiç cevap verilmediyse (ilk denemeyse) kilitle
+	var locked = sim_cfg.lock_controls_until_answered and attempt == 0
+	
+	if btn_pause: btn_pause.disabled = locked
+	if btn_reset: btn_reset.disabled = locked
+	if btn_fast_forward: btn_fast_forward.disabled = locked
+	if btn_anim: btn_anim.disabled = locked
+	if btn_sound: btn_sound.disabled = locked
+	if time_slider:
+		time_slider.editable = not locked
+		
+	# Kilitliyken çubuğu yarı saydam (%50 şeffaf) yaparak tıklanmaz olduğunu görselleştir
+	control_bar.modulate.a = 0.5 if locked else 1.0

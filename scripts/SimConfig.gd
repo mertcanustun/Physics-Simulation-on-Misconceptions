@@ -40,6 +40,20 @@ extends Resource
 @export var text_hud_vx: String = "Yatay Hız"
 @export var text_hud_vy: String = "Dikey Hız"
 
+@export_group("Arayüz ve Butonlar")
+@export var lock_controls_until_answered: bool = true ## İlk cevaba kadar alt kontrol barına dokunulmasını engeller.
+@export var show_replay_button: bool = true ## 'Tekrar' butonunu gösterir veya gizler.
+@export var show_fast_forward_button: bool = false ## 'Sona Git' butonunu gösterir veya gizler (Varsayılan: Kapalı).
+@export var btn_fast_forward_text: Color = Color("f59e0b") ## Sona Git butonu yazı rengi (Varsayılan: Turuncu)
+@export var btn_replay_text: Color = Color("16a34a") ## Tekrar butonu yazı rengi (Varsayılan: Koyu Yeşil)
+@export var btn_pause_text: Color = Color("ef4444") ## Durdur butonu yazı rengi (Varsayılan: Kırmızı)
+@export var btn_reset_text: Color = Color("3b82f6") ## Sıfırla butonu yazı rengi (Varsayılan: Mavi)
+@export var btn_toggle_on_text: Color = Color("22c55e") ## Anim/Ses AÇIK yazı rengi (Varsayılan: Yeşil)
+@export var btn_toggle_off_text: Color = Color("9aa3af") ## Anim/Ses KAPALI yazı rengi (Varsayılan: Gri)
+@export var show_anim_button: bool = true ## 'Animasyon Aç/Kapat' butonunu gösterir veya gizler.
+@export_range(8, 32, 1, "suffix:px") var hud_choice_font_size: int = 12  ## Sol üstteki seçilen kuvvetler listesinin yazı boyutu
+@export var show_apex_popup: bool = false  ## Tepe noktası (apex) bilgi pop-up'ını ekranda göster
+
 @export_group("Telemetri Sunucusu (Supabase)")
 @export var supabase_url: String = ""            ## ör: https://xxxxxxxx.supabase.co
 @export var supabase_anon_key: String = ""       ## Project Settings → API → "anon public"
@@ -109,6 +123,11 @@ extends Resource
 @export_range(1.0, 8.0, 0.2, "suffix:px") var real_path_dot_radius: float = 2.6
 @export_range(3.0, 40.0, 1.0, "suffix:px") var real_path_dot_gap: float = 9.0     ## noktalar arası boşluk
 
+@export_group("Zamansal eklentiler ")
+@export var show_time_display: bool = true ## Slider'ın yanında anlık zaman sayacını gösterir.
+@export var display_real_time: bool = false ## Tikliyse, zamanı fizik motoruna göre değil; time_scale'e bölünmüş "Gerçek Dünya Saniyesi" olarak gösterir.
+@export var show_kinematic_graphs: bool = true ## Bilgi ikonunun yanında 4 sekmeli dinamik grafikleri gösterir.
+
 @export_group("Kamera")
 @export var dynamic_zoom_mode: bool = true   ## Sadece mesafeye (konuma) duyarlı, en pürüzsüz mod
 @export var dynamic_zoom_with_speed: bool = false ## Hıza (Velocity) duyarlı mod (Kıyaslama testi için)
@@ -126,10 +145,6 @@ extends Resource
 @export_range(0.2, 2.0, 0.05, "suffix:×") var camera_max_zoom: float = 1.0     ## en yakın
 @export_range(0.0, 30.0, 0.5, "suffix:m") var camera_margin_m: float = 6.0     ## top kenara bu kadar yaklaşınca kamera uzaklaşmaya başlar
 @export_range(0.5, 15.0, 0.1) var camera_zoom_speed: float = 10.0
-
-@export_group("Arayüz (UI)")
-@export_range(8, 32, 1, "suffix:px") var hud_choice_font_size: int = 12  ## Sol üstteki seçilen kuvvetler listesinin yazı boyutu
-@export var show_apex_popup: bool = false  ## Tepe noktası (apex) bilgi pop-up'ını ekranda göster
 
 @export_group("Gökyüzü")
 @export_range(0, 15, 1) var cloud_count: int = 4               ## arka planda kaç bulut olsun (0 = kapalı)
