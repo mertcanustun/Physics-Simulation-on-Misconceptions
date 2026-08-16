@@ -1619,6 +1619,9 @@ func _build_graphs() -> void:
 func _on_draw_graph(c: Control) -> void:
 	if not field or field.predicted.is_empty(): return
 	
+	# GÜVENLİK KONTROLÜ: Ekran yerleşmeden önce eksi boyutlu (hatalı) çizimleri engelle
+	if c.size.x <= 55 or c.size.y <= 45: return 
+	
 	var is_pos = "Konum" in c.name
 	var is_vel = "Hız" in c.name
 	var is_acc = "İvme" in c.name
@@ -1770,6 +1773,74 @@ func _on_draw_graph(c: Control) -> void:
 	if is_hepsi and f:
 		var title_str = c.name.replace("Hepsi_", "")
 		c.draw_string(f, Vector2(rect.position.x + 8, rect.position.y + 16), title_str, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1,1,1,0.8))
+	# --- FARE İLE ÜZERİNE GELİNCE (HOVER) DEĞERLERİ GÖSTERME ---
+	var mpos = c.get_local_mouse_position()
+	
+	# Eğer fare grafiğin (dikdörtgenin) içindeyse değerleri hesapla
+	if rect.has_point(mpos):
+		# Farenin X konumuna denk gelen zamanı (t) bul
+		var hover_nx = clampf((mpos.x - rect.position.x) / rect.size.x, 0.0, 1.0)
+		var hover_t = hover_nx * max_t
+		
+		# Veri listemizdeki bu zamana en yakın noktayı bul
+		var closest_i = 0
+		var min_diff = 9999.0
+		for i in range(t_arr.size()):
+			var diff = absf(t_arr[i] - hover_t)
+			if diff < min_diff:
+				min_diff = diff
+				closest_i = i
+				
+		# Sadece simülasyonun o ana kadar oynatılmış kısımlarını göster
+		if t_arr[closest_i] <= field.play_t:
+			var h_t = t_arr[closest_i]
+			var h_vx = 0.0; var h_vy = 0.0
+			
+			if is_pos: h_vx = x_arr[closest_i]; h_vy = y_arr[closest_i]
+			elif is_vel: h_vx = vx_arr[closest_i]; h_vy = vy_arr[closest_i]
+			elif is_acc: h_vx = ax_arr[closest_i]; h_vy = ay_arr[closest_i]
+			elif is_frc: h_vx = ax_arr[closest_i] * mass; h_vy = ay_arr[closest_i] * mass
+			
+			var h_net = sqrt(h_vx*h_vx + h_vy*h_vy)
+			
+			# İmleç Çizgisi ve Yuvarlağı
+			var marker_px = rect.position.x + (h_t / max_t) * rect.size.x
+			c.draw_line(Vector2(marker_px, rect.position.y), Vector2(marker_px, rect.position.y + rect.size.y), Color(1, 1, 1, 0.3), 1.0, true)
+			c.draw_circle(Vector2(marker_px, mpos.y), 4.0, Color.WHITE)
+			c.draw_arc(Vector2(marker_px, mpos.y), 6.0, 0, TAU, 12, Color(1, 1, 1, 0.5), 1.5)
+			
+			# Bilgi Kutucuğunu Çiz (Tooltip)
+			if f:
+				var lines = ["Zaman: %.2f s" % h_t]
+				var colors = [Color.WHITE]
+				
+				if show_graph_x:
+					lines.append("X: %.1f" % h_vx)
+					colors.append(Color("f59e0b"))
+				if show_graph_y:
+					lines.append("Y: %.1f" % h_vy)
+					colors.append(Color("a855f7"))
+				if show_graph_net:
+					lines.append("Net: %.1f" % h_net)
+					colors.append(Color(1, 1, 1, 0.9))
+					
+				var box_w = 110.0
+				var box_h = lines.size() * 18 + 10
+				var box_p = Vector2(mpos.x + 15, mpos.y + 15)
+				
+				# Kutu ekranın sağından veya altından taşmasın diye sınır kontrolü
+				if box_p.x + box_w > rect.position.x + rect.size.x:
+					box_p.x = mpos.x - box_w - 15
+				if box_p.y + box_h > rect.position.y + rect.size.y:
+					box_p.y = mpos.y - box_h - 15
+					
+				# Arka Plan
+				c.draw_rect(Rect2(box_p, Vector2(box_w, box_h)), Color(0.05, 0.05, 0.07, 0.95), true)
+				c.draw_rect(Rect2(box_p, Vector2(box_w, box_h)), Color(1, 1, 1, 0.15), false, 1.0)
+				
+				# Yazılar
+				for i in range(lines.size()):
+					c.draw_string(f, Vector2(box_p.x + 10, box_p.y + 18 + i * 18), lines[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, colors[i])
 		
 func _on_draw_mini_view() -> void:
 	if not field or field.predicted.is_empty(): return
