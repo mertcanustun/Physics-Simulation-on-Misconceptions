@@ -354,7 +354,19 @@ func _process(delta: float) -> void:
 		var avail_h_m := (_ground_y() - 70.0) / _base_scale()
 		var dynamic_min_zoom := maxf(Physics.cfg.camera_min_zoom, minf(DEFAULT_SPAN_M / limit_x, avail_h_m / limit_y))
 		
-		if Physics.cfg.dynamic_zoom_with_speed:
+		if Physics.cfg.border_frame_zoom_mode:
+			# YENİ: SADECE ÇERÇEVELEME (Border Frame) MODU
+			var safe_w := size.x - 330.0 - Physics.cfg.border_margin_x
+			var safe_h := _ground_y() - Physics.cfg.border_margin_y
+			
+			var req_zoom_x := safe_w / maxf(bpos.x * _base_scale(), 0.001)
+			var req_zoom_y := safe_h / maxf(bpos.y * _base_scale(), 0.001)
+			
+			var force_fit_zoom := minf(req_zoom_x, req_zoom_y)
+			# Top çerçeveye gelene kadar normal zoom'da kal, çerçeveye çarpınca uzaklaş
+			want = maxf(minf(Physics.cfg.camera_start_zoom, force_fit_zoom), dynamic_min_zoom)
+			
+		elif Physics.cfg.dynamic_zoom_with_speed:
 			# TEST MODU 1: HIZ (VELOCITY) VE GEÇEN SÜREYE (active_t) BAĞLI BÖLME
 			var scale_divisor_y := 1.0
 			var scale_divisor_x := 1.0
@@ -972,7 +984,17 @@ func _instant_camera_update(bpos: Vector2, vnow: Vector2) -> void:
 	var dynamic_min_zoom := maxf(Physics.cfg.camera_min_zoom, minf(DEFAULT_SPAN_M / limit_x, avail_h_m / limit_y))
 	var want := Physics.cfg.camera_start_zoom
 	
-	if Physics.cfg.dynamic_zoom_with_speed:
+	if Physics.cfg.border_frame_zoom_mode:
+		var safe_w := size.x - 330.0 - Physics.cfg.border_margin_x
+		var safe_h := _ground_y() - Physics.cfg.border_margin_y
+		
+		var req_zoom_x := safe_w / maxf(bpos.x * _base_scale(), 0.001)
+		var req_zoom_y := safe_h / maxf(bpos.y * _base_scale(), 0.001)
+		
+		var force_fit_zoom := minf(req_zoom_x, req_zoom_y)
+		want = maxf(minf(Physics.cfg.camera_start_zoom, force_fit_zoom), dynamic_min_zoom)
+		
+	elif Physics.cfg.dynamic_zoom_with_speed:
 		var scale_divisor_y := 1.0
 		var scale_divisor_x := 1.0
 		if bpos.y > Physics.cfg.altitude_zoom_threshold:

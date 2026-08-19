@@ -93,6 +93,15 @@ var sfx_goal: AudioStreamPlayer
 var sfx_wind: AudioStreamPlayer
 var save_dialog: FileDialog
 var events_dialog: FileDialog
+# --- GİZLİ KOD DEĞİŞKENLERİ ---
+var secret_seq = [KEY_DOWN, KEY_DOWN, KEY_UP, KEY_UP, KEY_RIGHT, KEY_LEFT, KEY_RIGHT, KEY_LEFT]
+var secret_idx = 0
+var dev_panel: PanelContainer # YENİ DEV MOD PANELİ
+# --- DEV MOD BOYUTLANDIRMA (RESIZE) DEĞİŞKENLERİ ---
+var dev_resizing := false
+var dev_drag_start := Vector2.ZERO
+var dev_start_size := Vector2.ZERO
+var dev_scroll: ScrollContainer
 @onready var Tele: Node = get_node("/root/Telemetry")
 @onready var S: StringsData = get_node("/root/Strings")   # KOD YAZMADAN düzenlenebilir metinler (bkz. Strings.gd)
 
@@ -168,6 +177,7 @@ func _ready() -> void:
 	_build_control_bar()
 	_build_save_dialog()
 	_build_graphs() # Grafik panelini arka planda inşa et
+	_build_dev_panel() # Dev Mod panelini arka planda gizli olarak inşa et
 	resized.connect(_fit_question_panel)
 	
 	# --- YENİ EKLENEN SATIRLAR ---
@@ -180,6 +190,18 @@ func _ready() -> void:
 	_show_entry()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo:
+		# --- GİZLİ KOD (EASTER EGG) DİNLEYİCİSİ ---
+		if event.keycode == secret_seq[secret_idx]:
+			secret_idx += 1
+			if secret_idx >= secret_seq.size():
+				if dev_panel:
+					dev_panel.visible = true # Şifre doğru girilince paneli anında göster!
+				secret_idx = 0 # Şifreyi sıfırla
+		else:
+			# Yanlış tuşa basılırsa başa sar (İlk tuşa basıldıysa 1. adımdan başla)
+			secret_idx = 1 if event.keycode == secret_seq[0] else 0
+			
 	if event is InputEventKey and event.pressed and event.keycode == KEY_F8:
 		_export_events()                       # etkileşim (JSONL) verisini dışa aktar
 		return
@@ -1164,6 +1186,9 @@ func _on_continue() -> void:
 	official = Session.is_active(c)
 	if c == "DENEME-124-TEST":
 		official = false # Bu kod için veri kaydını zorla kapat
+		#if dev_panel: dev_panel.visible = true # Dev Modu Göster
+	else:
+		if dev_panel: dev_panel.visible = false # Öğrencilerden Gizle
 		
 	Tele.begin_session(participant_code, group, Codes.has_seen_topic(c), official)
 	attempt = 0
@@ -1906,3 +1931,262 @@ func _update_control_bar_lock() -> void:
 		
 	# Kilitliyken çubuğu yarı saydam (%50 şeffaf) yaparak tıklanmaz olduğunu görselleştir
 	control_bar.modulate.a = 0.5 if locked else 1.0
+
+# ==============================================================================
+# DEV MOD (DENEME-124-TEST) PENCERESİ
+# ==============================================================================
+func _build_dev_panel() -> void:
+	dev_panel = PanelContainer.new()
+	dev_panel.add_theme_stylebox_override("panel", _card_style(12, Color(0.1, 0.1, 0.15, 0.95), ACCENT))
+	
+	# --- 1. SAĞ ALTA ENDEKSLEME ---
+	dev_panel.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	dev_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN # Sola doğru büyür
+	dev_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN   # Yukarı doğru büyür
+	dev_panel.offset_right = -20
+	dev_panel.offset_bottom = -20
+	dev_panel.z_index = 100
+	dev_panel.visible = false
+	add_child(dev_panel)
+
+	# Dış kutuyu oluştur
+	var outer_v = VBoxContainer.new()
+	outer_v.add_theme_constant_override("separation", 10)
+	dev_panel.add_child(outer_v)
+
+	# --- 2. ÜST BAR: BOYUTLANDIRMA, AÇ/KAPAT VE GİZLE TUŞLARI ---
+	var top_h = HBoxContainer.new()
+	top_h.add_theme_constant_override("separation", 10)
+	outer_v.add_child(top_h)
+	
+	# Boyutlandırma (Resize) Tutamacı
+	var resize_btn = Button.new()
+	resize_btn.text = "↖" # Sol yukarı çapraz ok
+	resize_btn.custom_minimum_size = Vector2(36, 0)
+	resize_btn.mouse_default_cursor_shape = Control.CURSOR_FDIAGSIZE # İmleci köşegen ok yapar
+	_style_button(resize_btn, CARD2, TXT_MUTED)
+	top_h.add_child(resize_btn)
+
+	# Menüyü Aç/Kapat Butonu
+	var toggle_btn = Button.new()
+	toggle_btn.text = "🔧 DEV MOD"
+	toggle_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_style_button(toggle_btn, CARD2, ACCENT)
+	top_h.add_child(toggle_btn)
+
+	# Komple Gizleme (Yok Etme) Butonu
+	var hide_btn = Button.new()
+	hide_btn.text = "X"
+	hide_btn.custom_minimum_size = Vector2(40, 0)
+	_style_button(hide_btn, CARD2, DANGER)
+	top_h.add_child(hide_btn)
+
+	# İçeriklerin saklanacağı KAYDIRILABİLİR alan (ScrollContainer)
+	dev_scroll = ScrollContainer.new()
+	dev_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	dev_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	dev_scroll.custom_minimum_size = Vector2(360, 220) # Panelin açıldığındaki ilk boyutu
+	dev_scroll.visible = false # Menü başlangıçta KAPALI gelsin
+	outer_v.add_child(dev_scroll)
+
+	# İçerik Kutusu (Eski 'v' kutusunu Scroll'un içine saklıyoruz, alttaki kodlar bozulmayacak)
+	var v = VBoxContainer.new()
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	v.add_theme_constant_override("separation", 10)
+	dev_scroll.add_child(v)
+
+	# Boyutlandırma İşlemi (Mouse ile Sürükleme)
+	resize_btn.gui_input.connect(func(event: InputEvent):
+		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+			dev_resizing = event.pressed
+			if dev_resizing:
+				dev_drag_start = resize_btn.get_global_mouse_position()
+				dev_start_size = dev_scroll.custom_minimum_size
+		elif event is InputEventMouseMotion and dev_resizing:
+			var delta_drag = event.global_position - dev_drag_start
+			var new_size = dev_start_size - delta_drag # Sola ve yukarı çektikçe panel büyür
+			new_size.x = maxf(new_size.x, 320.0) # Çok fazla küçültmeyi engelle
+			new_size.y = maxf(new_size.y, 150.0) 
+			dev_scroll.custom_minimum_size = new_size
+	)
+
+	# Buton Görevleri
+	toggle_btn.pressed.connect(func(): dev_scroll.visible = not dev_scroll.visible)
+	hide_btn.pressed.connect(func(): dev_panel.visible = false)
+
+	var grid = GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 8)
+	v.add_child(grid)
+
+	# 1. Kamera Modu Değiştirici
+	grid.add_child(_label("Kamera Modu:", 12, TXT_MUTED))
+	var cam_opt = OptionButton.new()
+	cam_opt.add_item("Orijinal Sığdır")
+	cam_opt.add_item("Dinamik (Mesafe)")
+	cam_opt.add_item("Dinamik (Hız)")
+	cam_opt.add_item("Sabit Çerçeve")
+	cam_opt.item_selected.connect(_on_dev_cam_selected)
+	grid.add_child(cam_opt)
+	
+	if sim_cfg.border_frame_zoom_mode: cam_opt.selected = 3
+	elif sim_cfg.dynamic_zoom_with_speed: cam_opt.selected = 2
+	elif sim_cfg.dynamic_zoom_mode: cam_opt.selected = 1
+	else: cam_opt.selected = 0
+
+	# 2. Fizik Hesaplayıcı (F * t = m * v)
+	var m_edit = LineEdit.new()
+	var t_edit = LineEdit.new()
+	var f_edit = LineEdit.new()
+	var v_edit = LineEdit.new()
+
+	grid.add_child(_label("Kütle (m):", 12, TXT_MUTED))
+	m_edit.text = str(sim_cfg.mass_kg)
+	grid.add_child(m_edit)
+	
+	grid.add_child(_label("Vuruş Süresi (t):", 12, TXT_MUTED))
+	t_edit.text = "2.0" # Varsayılan olarak 2 saniye kabul edilir
+	grid.add_child(t_edit)
+
+	grid.add_child(_label("Kuvvet (F):", 12, TXT_MUTED))
+	f_edit.text = str(sim_cfg.impetus_acc)
+	grid.add_child(f_edit)
+
+	grid.add_child(_label("İlk Hız (v):", 12, TXT_MUTED))
+	v_edit.text = str(sim_cfg.v0)
+	grid.add_child(v_edit)
+
+	# F veya v girildiğinde diğerini dinamik hesaplayan fonksiyon
+	var update_physics = func(source: String):
+		var m_val = float(m_edit.text)
+		if m_val <= 0.0: m_val = 1.0 # Sıfıra bölme hatasını engelle
+		sim_cfg.mass_kg = m_val
+		Physics.cfg.mass_kg = m_val # Fizik motorunu doğrudan uyar
+		
+		var t_val = float(t_edit.text)
+		if t_val <= 0.0: t_val = 1.0
+		
+		if source == "F":
+			var F = float(f_edit.text)
+			var v_new = (F * t_val) / m_val
+			v_edit.text = "%.2f" % v_new
+			sim_cfg.impetus_acc = F; Physics.cfg.impetus_acc = F; kick_force = F
+			sim_cfg.v0 = v_new; Physics.cfg.v0 = v_new; v0 = v_new
+		elif source == "v":
+			var v_new = float(v_edit.text)
+			var F = (m_val * v_new) / t_val
+			f_edit.text = "%.2f" % F
+			sim_cfg.v0 = v_new; Physics.cfg.v0 = v_new; v0 = v_new
+			sim_cfg.impetus_acc = F; Physics.cfg.impetus_acc = F; kick_force = F
+		
+		_apply_dev_physics_change() # Yeni hesaplayıcıyı çağır
+
+	# Herhangi bir kutuda ENTER'a basıldığında hesaplamayı tetikle
+	m_edit.text_submitted.connect(func(_txt): update_physics.call("F"))
+	t_edit.text_submitted.connect(func(_txt): update_physics.call("F"))
+	f_edit.text_submitted.connect(func(_txt): update_physics.call("F"))
+	v_edit.text_submitted.connect(func(_txt): update_physics.call("v"))
+
+	# Hava Direnci (drag_k)
+	grid.add_child(_label("Hava Direnci (k):", 12, TXT_MUTED))
+	var drag_edit = LineEdit.new()
+	drag_edit.text = str(sim_cfg.drag_k)
+	drag_edit.text_submitted.connect(func(txt):
+		sim_cfg.drag_k = float(txt); Physics.cfg.drag_k = float(txt)
+		_apply_dev_physics_change() 
+	)
+	grid.add_child(drag_edit)
+
+	# 3. Bitiş Koşulları (Sınır Limitleri)
+	grid.add_child(_label("Max X (Mesafe):", 12, TXT_MUTED))
+	var maxx_edit = LineEdit.new()
+	maxx_edit.text = str(sim_cfg.max_x)
+	maxx_edit.text_submitted.connect(func(txt): 
+		sim_cfg.max_x = float(txt); Physics.cfg.max_x = float(txt)
+		_apply_dev_physics_change()
+	)
+	grid.add_child(maxx_edit)
+
+	grid.add_child(_label("Max Y (İrtifa):", 12, TXT_MUTED))
+	var maxy_edit = LineEdit.new()
+	maxy_edit.text = str(sim_cfg.max_y)
+	maxy_edit.text_submitted.connect(func(txt): 
+		sim_cfg.max_y = float(txt); Physics.cfg.max_y = float(txt)
+		_apply_dev_physics_change()
+	)
+	grid.add_child(maxy_edit)
+
+	grid.add_child(_label("Max Süre (s):", 12, TXT_MUTED))
+	var maxt_edit = LineEdit.new()
+	maxt_edit.text = str(sim_cfg.max_watch_seconds)
+	maxt_edit.text_submitted.connect(func(txt): 
+		sim_cfg.max_watch_seconds = float(txt); Physics.cfg.max_watch_seconds = float(txt)
+		_apply_dev_physics_change()
+	)
+	grid.add_child(maxt_edit)
+
+	# 4. Zaman Ölçeği (Oynatma Hızı)
+	grid.add_child(_label("Oynatma Hızı:", 12, TXT_MUTED))
+	var ts_edit = LineEdit.new()
+	ts_edit.text = str(sim_cfg.time_scale)
+	ts_edit.text_submitted.connect(func(txt):
+		var ts = float(txt)
+		sim_cfg.time_scale = ts
+		if field: field.time_scale = ts
+	)
+	grid.add_child(ts_edit)
+
+	v.add_child(_spacer(4))
+	
+	# 5. Hızlı Arayüz Kapatıp Açma
+	var chk_g = CheckBox.new()
+	chk_g.text = "Grafikler Butonu Aktif"
+	chk_g.button_pressed = sim_cfg.show_kinematic_graphs
+	chk_g.toggled.connect(func(on):
+		sim_cfg.show_kinematic_graphs = on
+		if btn_graph_icon:
+			var can_show = field and (field.playing or field.finished or time_panel.visible) and not thanks_center.visible
+			btn_graph_icon.visible = on and can_show
+	)
+	v.add_child(chk_g)
+
+	var chk_ff = CheckBox.new()
+	chk_ff.text = "Sona Git Butonu Aktif"
+	chk_ff.button_pressed = sim_cfg.show_fast_forward_button
+	chk_ff.toggled.connect(func(on):
+		sim_cfg.show_fast_forward_button = on
+		if btn_fast_forward: btn_fast_forward.visible = on
+	)
+	v.add_child(chk_ff)
+
+func _on_dev_cam_selected(idx: int) -> void:
+	match idx:
+		0: # Orijinal Sığdır
+			sim_cfg.border_frame_zoom_mode = false
+			sim_cfg.dynamic_zoom_mode = false
+			sim_cfg.dynamic_zoom_with_speed = false
+		1: # Dinamik Mesafe
+			sim_cfg.border_frame_zoom_mode = false
+			sim_cfg.dynamic_zoom_mode = true
+			sim_cfg.dynamic_zoom_with_speed = false
+		2: # Dinamik Hız
+			sim_cfg.border_frame_zoom_mode = false
+			sim_cfg.dynamic_zoom_mode = true
+			sim_cfg.dynamic_zoom_with_speed = true
+		3: # Sabit Çerçeve
+			sim_cfg.border_frame_zoom_mode = true
+			sim_cfg.dynamic_zoom_mode = false
+			sim_cfg.dynamic_zoom_with_speed = false
+
+func _apply_dev_physics_change() -> void:
+	# 1. Yeni fizik kurallarına göre doğru cevabın (Yerçekimi + Hava Direnci) düşeceği yeni hedef noktasını hesapla
+	var new_target = Physics.target_x()
+	if field:
+		field.target_x = new_target
+	Physics.cfg.goal_x = new_target - 2.5
+	
+	# 2. Önizlemeyi ve ekranı anında güncelle (Kale de yeni yerine ışınlanır)
+	_update_preview()
+	if field:
+		field.queue_redraw()

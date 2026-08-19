@@ -129,8 +129,12 @@ extends Resource
 @export var show_kinematic_graphs: bool = true ## Bilgi ikonunun yanında 4 sekmeli dinamik grafikleri gösterir.
 
 @export_group("Kamera")
+@export var border_frame_zoom_mode: bool = false ## YENİ: Topu sadece ekran kenarlarına göre çerçeveleyen sabit mod.
 @export var dynamic_zoom_mode: bool = true   ## Sadece mesafeye (konuma) duyarlı, en pürüzsüz mod
 @export var dynamic_zoom_with_speed: bool = false ## Hıza (Velocity) duyarlı mod (Kıyaslama testi için)
+
+@export_range(0.0, 500.0, 5.0, "suffix:px") var border_margin_x: float = 150.0 ## Çerçeve Modu: Sağ kenar güvenlik payı
+@export_range(0.0, 500.0, 5.0, "suffix:px") var border_margin_y: float = 100.0 ## Çerçeve Modu: Üst kenar güvenlik payı
 
 @export_range(0.0, 100.0, 1.0, "suffix:m") var altitude_zoom_threshold: float = 25.0  ## Bu yüksekliği (Y) geçince zoom out başlar
 @export_range(0.0, 0.2, 0.001) var altitude_zoom_factor: float = 0.040  ## NORMAL MOD (Mesafe) dikey çarpanı
