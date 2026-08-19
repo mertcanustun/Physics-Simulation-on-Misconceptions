@@ -18,5 +18,4 @@ camera_origin_x = 200.0
 draw_arrows_behind_ball = true
 display_real_time = true
 show_kinematic_graphs = false
-border_frame_zoom_mode = true
 altitude_zoom_threshold = 20.0
