@@ -394,11 +394,13 @@ func _build_intro_modal() -> void:
 	intro_modal_center = CenterContainer.new()
 	intro_modal_center.set_anchors_preset(Control.PRESET_FULL_RECT)
 	intro_modal_center.visible = false
+	intro_modal_center.z_index = 40 # Şeffaf katmanı sonuç ekranının üstüne taşır
 	add_child(intro_modal_center)
 	
 	intro_panel = PanelContainer.new()
 	intro_panel.add_theme_stylebox_override("panel", _card_style(18))
 	intro_panel.custom_minimum_size = Vector2(520, 0)
+	intro_panel.z_index = 40 # Panelin animasyon sırasında da hep üstte kalmasını sağlar
 	intro_modal_center.add_child(intro_panel)
 	
 	var v := VBoxContainer.new()
@@ -425,6 +427,7 @@ func _build_intro_modal() -> void:
 	btn_info_icon.custom_minimum_size = Vector2(80, 40)
 	_style_button(btn_info_icon, CARD, TXT_MUTED, Color(1, 1, 1, 0.1))
 	btn_info_icon.visible = false
+	btn_info_icon.z_index = 40 # "i" ikonunun da her zaman sonuçların önünde kalmasını garantiye alalım
 	btn_info_icon.pressed.connect(_on_info_icon_clicked)
 	add_child(btn_info_icon)
 	
