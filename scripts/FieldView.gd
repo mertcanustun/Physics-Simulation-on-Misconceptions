@@ -327,6 +327,15 @@ func _process(delta: float) -> void:
 		animating = true
 		if kick_follow_t >= KICK_FOLLOW_DUR:
 			kick_follow = false
+			
+	# --- YENİ EKLENEN: Top asılıyken (beklerken) fırlatma hızını HUD'a gönder ---
+	if prekick_active or kick_hold or pv_active:
+		var rad = deg_to_rad(Physics.cfg.angle_deg)
+		var vx = cos(rad) * Physics.cfg.v0
+		var vy = sin(rad) * Physics.cfg.v0
+		speed_report.emit(Physics.cfg.v0, vx, vy)
+	# -----------------------------------------------------------------------------
+
 	if playing:
 		play_t += sdt
 		var last_t: float = predicted[-1]["t"] if not predicted.is_empty() else 0.0
